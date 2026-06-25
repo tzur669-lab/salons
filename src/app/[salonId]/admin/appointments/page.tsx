@@ -67,6 +67,7 @@ export default function AdminAppointmentsPage() {
           startTime: appt.startTime.toDate(),
           endTime: appt.endTime.toDate(),
           clinicAddress: clinic.address,
+          salonId,
           appointmentId: appt.id,
           baseUrl: window.location.origin,
         });

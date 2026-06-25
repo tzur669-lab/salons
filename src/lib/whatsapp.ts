@@ -10,7 +10,8 @@ interface WhatsAppParams {
 }
 
 interface WhatsAppApprovalParams extends WhatsAppParams {
-  /** Appointment id — used to build the short internal /cal/[id] redirect link. */
+  salonId: string;
+  /** Appointment id — used to build the short internal /cal/[salonId]/[id] redirect link. */
   appointmentId: string;
   /** Origin of the deployed app (e.g. window.location.origin). */
   baseUrl?: string;
@@ -29,15 +30,15 @@ function formatTime(date: Date): string {
 }
 
 export function buildWhatsAppApprovalLink(params: WhatsAppApprovalParams): string {
-  const { clientPhone, clientName, serviceName, startTime, appointmentId, baseUrl } = params;
+  const { clientPhone, clientName, serviceName, startTime, salonId, appointmentId, baseUrl } = params;
 
   const dateStr = formatHebrewFullDate(startTime);
   const timeStr = formatTime(startTime);
 
-  // Short internal link — the /cal/[id] route looks up the appointment server-side
-  // and 302-redirects to the (very long) Google Calendar "add event" URL.
+  // Short internal link — the /cal/[salonId]/[id] route looks up the appointment
+  // server-side and 302-redirects to the Google Calendar "add event" URL.
   const origin = baseUrl ?? (typeof window !== "undefined" ? window.location.origin : "");
-  const calLink = `${origin}/cal/${appointmentId}`;
+  const calLink = `${origin}/cal/${salonId}/${appointmentId}`;
 
   const message = [
     `היי ${firstName(clientName)}${HEART}`,
@@ -94,7 +95,6 @@ export function buildWhatsAppRejectionLink(params: Omit<WhatsAppParams, "clinicA
     `שעה: ${timeStr}`,
     ``,
     `אשמח שנתאם מועד אחר שנוח לך!`,
-    `רני`,
   ].join("\n");
 
   const phone = clientPhone.replace(/\D/g, "").replace(/^0/, "972");

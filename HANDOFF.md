@@ -397,4 +397,22 @@ _Forked from Roni Nails history (sessions 1–21). Prior changelog entries (pre-
 
 </details>
 
-_Last updated: 2026-06-25 (session 1 — Salons)_
+### 2026-06-25 (session 2 — multi-tenant cal route + whatsapp fix)
+
+**Bug fix — `cal/[id]/route.ts` was broken for multi-tenant:**
+- Old route read from root-level Firestore collections (`appointmentsApproved/{id}`) instead of per-salon subcollections (`salons/{salonId}/appointmentsApproved/{id}`)
+- Old route read clinic settings from root `clinicSettings/main` instead of `salons/{salonId}/clinicSettings/main`
+- Old route had no `salonId` — could not scope queries to the right tenant
+
+**Fix:**
+- Deleted `src/app/cal/[id]/route.ts` (single-tenant legacy)
+- Created `src/app/cal/[salonId]/[id]/route.ts` — reads appointments and clinic settings from the correct per-salon paths
+- Updated `src/lib/whatsapp.ts` — added `salonId` to `WhatsAppApprovalParams`; cal URL is now `/cal/${salonId}/${appointmentId}`; removed hardcoded "רני" from rejection message
+- Updated `src/app/[salonId]/admin/appointments/page.tsx` and `src/app/[salonId]/admin/page.tsx` to pass `salonId` to `buildWhatsAppApprovalLink`
+- Added `NEXT_PUBLIC_APP_URL=https://salonss.vercel.app` to `.env.local` (required by `notify-admin` route and `firebase.ts` authDomain logic)
+
+`npm run build` passes clean. `/cal/[salonId]/[id]` registers as `ƒ Dynamic`.
+
+---
+
+_Last updated: 2026-06-25 (session 2 — Salons)_
