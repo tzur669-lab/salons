@@ -7,7 +7,8 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-salons \"vitest run --config vitest.rules.config.ts\""
   },
   "dependencies": {
     "@capacitor-firebase/messaging": "^8.2.0",
@@ -34,12 +35,14 @@
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.3.4",
+    "@firebase/rules-unit-testing": "^5.0.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "firebase-tools": "^13.35.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.8"
