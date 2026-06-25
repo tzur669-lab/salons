@@ -6,6 +6,7 @@ export interface Salon {
   displayName: string;   // Human-readable salon name shown in the UI
   ownerUid: string;      // Firebase Auth UID of the owner/technician
   status: "active" | "inactive";
+  bookingUrl?: string;   // Convenience copy of the public link ({APP_URL}/{slug}); derived from slug, written at onboarding
   createdAt: Timestamp;
 }
 

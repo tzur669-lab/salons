@@ -73,7 +73,7 @@ Server (Next.js API routes — Firebase Admin SDK, never run client-side)
   └─ /api/login-by-name, /api/delete-account, /api/register-push-token, etc. — global/per-user
 
 Data Layer (Firestore)
-  salons/{salonId}/              ← ROOT tenant anchor doc { slug, displayName, ownerUid, status, createdAt }
+  salons/{salonId}/              ← ROOT tenant anchor doc { slug, displayName, ownerUid, status, bookingUrl, createdAt }
     clinicSettings/main          ← ClinicSettings (name, address, hours, gallery, links)
     paymentSettings/main         ← PaymentSettings (Bit/Paybox phone, QR)
     services/{id}                ← Service catalog
@@ -354,6 +354,17 @@ review, then verified the isolation invariants on the Firestore emulator. **Pre-
 - **Hygiene:** deleted the 10 empty legacy route stub dirs (`src/app/admin`, `/book`, …); removed
   dead `createAdminAppointment`, `createAppointment`, `getActiveAppointmentsForSlots`,
   `requestAppointmentChange` + orphaned imports; gitignored Firebase emulator debug logs.
+
+**➕ Onboarding additions (owner request):**
+- Each salon doc now stores a convenience **`bookingUrl`** field (`{APP_URL}/{slug}`), written at
+  onboarding (`api/onboard`). Derived from the slug (added `bookingUrl?` to the `Salon` type); the
+  app still routes by slug, so it's purely for Console visibility / sharing. Existing salons need a
+  one-time manual backfill in the Console (e.g. `gylt-nyyls` → `https://salonss.vercel.app/gylt-nyyls`).
+- `/onboard` now has an OPTIONAL **"English name for the URL"** input (`englishName`). When provided it
+  becomes the slug (slugified + collision-checked); left empty → the existing auto-transliteration of
+  the Hebrew display name (unchanged). Lets owners pick a clean URL (e.g. `gilat-nails`) instead of the
+  rough auto-slug (`gylt-nyyls`). NOTE: the auto fallback is the built-in Hebrew→Latin map, not a live
+  Google Translate call — true Google-quality transliteration would need an external API.
 
 **✅ Verification (all green):**
 - `npm run build` (type gate) ✓ · `npm test` 20/20 ✓
