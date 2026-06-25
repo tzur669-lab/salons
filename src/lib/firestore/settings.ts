@@ -31,6 +31,18 @@ export async function saveClinicSettings(salonId: string, data: ClinicSettings):
   await setDoc(salonSubDoc(salonId, "clinicSettings", "main"), data);
 }
 
+// ── Owner notification email ─────────────────────────────────────
+// Stored on the owner's PRIVATE users/{uid} doc (not clinicSettings, which is
+// public-read). This is the address /api/notify-admin emails on each new booking.
+export async function getOwnerNotificationEmail(uid: string): Promise<string> {
+  const snap = await getDoc(doc(db, "users", uid));
+  return (snap.data()?.notificationEmail as string | undefined) ?? "";
+}
+
+export async function saveOwnerNotificationEmail(uid: string, email: string): Promise<void> {
+  await setDoc(doc(db, "users", uid), { notificationEmail: email.trim() }, { merge: true });
+}
+
 // ── Payment Settings ─────────────────────────────────────────────
 export async function getPaymentSettings(salonId: string): Promise<PaymentSettings | null> {
   const snap = await getDoc(salonSubDoc(salonId, "paymentSettings", "main"));

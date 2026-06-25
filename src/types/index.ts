@@ -24,6 +24,7 @@ export interface AppUser {
   name: string;
   email: string;
   authEmail?: string; // actual Firebase Auth email (may be placeholder for no-email users)
+  notificationEmail?: string; // owner-only: where this salon's "new appointment" alerts are emailed (overrides authEmail)
   phone: string;
   role: UserRole;
   createdAt: Timestamp;

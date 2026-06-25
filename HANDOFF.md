@@ -3,7 +3,7 @@
 **GitHub:** https://github.com/tzura669-lab/salons  
 **Deployed:** Vercel (auto-deploy on push to main) — https://salonss.vercel.app  
 **Firebase project:** `salons-19a2e`  
-**Stack:** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 · Firebase (Auth + Firestore + Storage + Messaging) · Firebase Admin SDK (API routes) · Resend (email) · Capacitor 8 (native, deferred for MVP)
+**Stack:** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 · Firebase (Auth + Firestore + Storage + Messaging) · Firebase Admin SDK (API routes) · SendGrid (email) · Capacitor 8 (native, deferred for MVP)
 
 ---
 
@@ -56,7 +56,7 @@ Server (Next.js API routes — Firebase Admin SDK, never run client-side)
   ├─ /api/onboard                — Validate invite code → create salons/{salonId} + subcollections
   ├─ /api/availability           — PUBLIC: bookable slots for one day, requires {salonId, dayKey, serviceDuration}
   ├─ /api/appointments           — Create appointment under salons/{salonId}/appointmentsPending
-  ├─ /api/notify-admin           — Email owner (reads ownerUid → users/{ownerUid}.authEmail) + FCM push
+  ├─ /api/notify-admin           — Email owner (reads ownerUid → users/{ownerUid}.notificationEmail ?? authEmail) + FCM push
   ├─ /api/notify-client-approval — Owner-gated (verifySalonOwner): push client on approval
   ├─ /api/cancel-appointment     — Client cancels own pending appointment (ID-token auth)
   ├─ /api/reschedule-request     — Client reschedules (Bearer auth + booking-lock txn)
@@ -107,7 +107,7 @@ Data Layer (Firestore)
 | `salonId` is always validated server-side | every API route | Routes check that `salons/{salonId}` exists and has `status: "active"` before doing any work. |
 | `register-push-token` derives uid from the **ID token**, never the body | `api/register-push-token`, `push.ts`, `web-push.ts`, `useAuth.logout` | Security: anyone could register a device under another uid. uid always comes from the verified Bearer token. |
 | Client cancellation goes through `/api/cancel-appointment` | `my-appointments/page.tsx` | Moving docs pending→rejected is admin-only in the rules; the API route does it via Admin SDK. |
-| `notify-admin` trusts only `{salonId, appointmentId}` | `api/notify-admin` | Unauthenticated (guests book); reads the real pending doc as source of truth; HTML-escaped; idempotent via `adminNotifiedAt`. Email goes to the OWNER (reads `salons/{salonId}.ownerUid` → `users/{ownerUid}.authEmail`), never a global ADMIN_EMAIL. |
+| `notify-admin` trusts only `{salonId, appointmentId}` | `api/notify-admin` | Unauthenticated (guests book); reads the real pending doc as source of truth; HTML-escaped; idempotent via `adminNotifiedAt`. Email goes to the OWNER via SendGrid (reads `salons/{salonId}.ownerUid` → `users/{ownerUid}.notificationEmail`, falling back to `authEmail` if unset), never a global ADMIN_EMAIL. |
 | Root layout is NOT `force-dynamic` | `app/layout.tsx` | All pages prerender `○ Static` (CDN-served). Do not add `export const dynamic`. |
 | Slot availability is computed SERVER-side | `api/availability` | Clients must NOT read appointment collections directly. Privacy + read-cost. |
 | Appointment-list rules require auth | `firestore.rules` | `list: if request.auth != null` on all appointment collections. |
@@ -145,7 +145,7 @@ User picks slot → Zustand step 2 → 3
 User confirms (or fills GuestForm)
   → createAppointment() → salons/{salonId}/appointmentsPending
   → POST /api/notify-admin { salonId, appointmentId }
-    → reads salon.ownerUid → users/{ownerUid}.authEmail → Resend email
+    → reads salon.ownerUid → users/{ownerUid}.notificationEmail ?? authEmail → SendGrid email
     → FCM push to owner's devices
     → approval URL: /{salonId}/admin/appointments
 Owner approves
@@ -225,12 +225,13 @@ FIREBASE_PROJECT_ID                     ← salons-19a2e
 FIREBASE_CLIENT_EMAIL                   ← Service account email
 FIREBASE_PRIVATE_KEY                    ← Service account key (escaped \n; code does .replace(/\\n/g,"\n"))
 FIREBASE_SERVER_API_KEY                 ← Firebase Web API key (for REST password verification)
-RESEND_API_KEY                          ← email sending
+SENDGRID_API_KEY                        ← email sending (SendGrid)
+SENDGRID_FROM                           ← verified single-sender address (SendGrid → Sender Authentication)
 CRON_SECRET                             ← random string; sent as Bearer by the cron scheduler
 APP_URL                                 ← https://salonss.vercel.app (used in owner approval emails)
 ```
 
-**NO `ADMIN_EMAIL`** — retired. Owner email is read from `users/{ownerUid}.authEmail` at runtime.
+**NO `ADMIN_EMAIL`** — retired, and its last fallback removed. Owner email is read from `users/{ownerUid}.notificationEmail` (falling back to `authEmail`) at runtime.
 
 Set all of these in Vercel Dashboard → Settings → Environment Variables.
 
@@ -256,7 +257,10 @@ Or deploy individually via Firebase Console → Firestore → Rules tab.
    - ID: any string (e.g. `SALON2025`)
    - Fields: `active: true`, `maxUses: 10`, `uses: 0`
 
-2. A technician navigates to `/onboard`, enters the invite code + 4 fields (name, phone, address, hours) → clicks "סיים הרשמה" → lands at `/{salonId}/admin`
+2. A technician navigates to `/onboard`. If not signed in, the page shows an inline
+   **login/sign-up** card (Google + email/password) — no pre-existing salon link needed.
+   After auth, they enter the invite code + 4 fields (name, phone, address, hours) →
+   click "סיים הרשמה" → land at `/{salonId}/admin`
 
 3. The owner then:
    - Fills in services at `/{salonId}/admin/services`
@@ -415,4 +419,62 @@ _Forked from Roni Nails history (sessions 1–21). Prior changelog entries (pre-
 
 ---
 
-_Last updated: 2026-06-25 (session 2 — Salons)_
+### 2026-06-25 (session 3 — per-salon booking-alert emails via SendGrid)
+
+**Problem:** with multiple salons, only the user's own inbox received "new appointment"
+emails. Root cause: `notify-admin` sent `from: onboarding@resend.dev` (Resend's shared
+*test* sender, which only delivers to the Resend-account owner), and for owners without a
+real login email the recipient fell back to a global `ADMIN_EMAIL` (the user's own inbox).
+
+**Changes:**
+- Email provider Resend → **SendGrid single-sender** (`@sendgrid/mail`). `from` is the
+  verified `SENDGRID_FROM`, with each salon's `displayName` as the sender's display name.
+  Removed the `resend` dependency. (`onboarding@resend.dev` only emailed your own inbox;
+  SendGrid single-sender delivers to any manager once one sender address is verified.)
+- `notify-admin` recipient resolution: `users/{ownerUid}.notificationEmail` (explicit) →
+  `authEmail` (if not a `noemail_` placeholder) → send nothing. **Removed the
+  `process.env.ADMIN_EMAIL` fallback** — it leaked one salon's bookings into the user's inbox.
+- New PRIVATE per-owner field `AppUser.notificationEmail`, stored on the owner-only
+  `users/{uid}` doc (NOT `clinicSettings`/`salons`, which are public-read → would expose the
+  address). Read by `notify-admin` (same doc it already fetches → zero extra reads).
+- Owner sets it in `…/admin/clinic` (new "התראות על תורים" section); optionally seeded at
+  `/onboard` (field prefilled from the owner's real login email). New helpers
+  `getOwnerNotificationEmail` / `saveOwnerNotificationEmail` in `lib/firestore/settings.ts`;
+  `api/onboard` writes it to `users/{uid}` (merge) when provided.
+- Env: `RESEND_API_KEY` → `SENDGRID_API_KEY` + `SENDGRID_FROM`. **No Firestore-rules change**
+  (owner already may update non-`role` fields on their own user doc).
+
+> ⚠️ Deliverability: a SendGrid single sender from a free `@gmail.com` address may land in
+> Spam/Promotions at first (Gmail DMARC). Mark "Not spam" once; or verify a real domain later
+> and point `SENDGRID_FROM` at `alerts@yourdomain` — no code change needed.
+
+`npm run build` + `npm test` pass clean.
+
+---
+
+### 2026-06-25 (session 4 — first-login on /onboard)
+
+**Problem:** `/onboard` required an authenticated user, but the only login UI lives at
+`/[salonId]/login`, and `SalonProvider` redirects to `/` when the salon doesn't exist. For
+the **very first salon** there was no salon to log in through → a chicken-and-egg deadlock
+(the page just showed "התחבר תחילה דרך קישור הסלון שלך"). Surfaced after the Vercel
+Framework-Preset fix made the deployment reachable (was returning a platform-level 404).
+
+**Fix (no backend change):**
+- `src/app/onboard/page.tsx` — when `!user`, render an inline **login/sign-up card**
+  (Google via `signInWithGoogle`, or email+password via `signInWithEmail`/`signUpWithEmail`
+  from the global `useAuth`). Sign-up is the default mode. On success the global auth
+  listener sets `user`, and the page re-renders straight into the registration form (already
+  on `/onboard`, so no redirect). Step indicator hidden until signed in.
+- Auth is global (one Firebase Auth across all salons), so no new route/rule was needed — the
+  technician's account is reused as the salon `ownerUid` when `/api/onboard` runs.
+
+**Note (unrelated, pre-existing):** `package.json` still `"name": "roni-nails"` and
+`capacitor.config.ts` still `appName: 'Roni Nail'` + `server.url: roni-nails.vercel.app` —
+fork leftovers, not yet rebranded. No effect on the web app.
+
+`npm run build` passes clean; `/onboard` stays `○ Static`.
+
+---
+
+_Last updated: 2026-06-25 (session 4 — Salons)_

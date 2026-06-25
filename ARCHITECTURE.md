@@ -267,7 +267,7 @@ API Authorization:
 | `SalonProvider` wraps `AdminNotificationsProvider` | The notifications provider uses `useSalon()` | Moving notifications outside SalonProvider breaks the context |
 | `collectionGroup("appointmentsApproved")` ↔ composite indexes | Firestore requires the indexes for multi-field queries | Missing indexes cause runtime `FAILED_PRECONDITION` errors in the cron |
 | `salonId` in every API route body ↔ server-side salon validation | Structural tenant isolation | Adding a route without salonId validation leaks cross-tenant data |
-| `salon.ownerUid` → `users/{ownerUid}.authEmail` | notify-admin reads email dynamically | If users doc is missing `authEmail`, owner gets no booking email |
+| `salon.ownerUid` → `users/{ownerUid}.notificationEmail ?? authEmail` | notify-admin resolves the alert recipient dynamically (SendGrid) | If both are unset/placeholder, the owner gets no booking email (no global fallback by design) |
 | `storage.rules` `firestore.get(...)` ↔ `salons/{salonId}.ownerUid` | Storage rules cross-reference Firestore | If the salon doc is deleted, uploads will be denied |
 | `booking-logic.ts` + `/api/availability` ↔ `lib/timezone.ts` | Slot instants built from Israel wall time | Must stay in Asia/Jerusalem; using `Date.setHours()` reintroduces device/UTC tz bug |
 

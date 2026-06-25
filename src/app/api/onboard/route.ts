@@ -11,6 +11,7 @@ const body = z.object({
   openTime: z.string().regex(/^\d{2}:\d{2}$/),
   closeTime: z.string().regex(/^\d{2}:\d{2}$/),
   openDays: z.array(z.number().int().min(0).max(6)).min(1),
+  notificationEmail: z.union([z.string().email().max(200), z.literal("")]).optional(),
 });
 
 /** Converts "סלון דנה" → "salon-dana" — URL-safe slug. */
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "bad-request", details: parsed.error.flatten() }, { status: 400 });
   }
-  const { inviteCode, displayName, phone, address, openTime, closeTime, openDays } = parsed.data;
+  const { inviteCode, displayName, phone, address, openTime, closeTime, openDays, notificationEmail } = parsed.data;
 
   const db = getAdminDb();
 
@@ -161,6 +162,11 @@ export async function POST(req: NextRequest) {
       closeTime,
       isOpen: true,
     });
+  }
+
+  // seed the owner's PRIVATE notification email (where booking alerts are sent)
+  if (notificationEmail) {
+    batch.set(db.collection("users").doc(uid), { notificationEmail }, { merge: true });
   }
 
   // consume invite code

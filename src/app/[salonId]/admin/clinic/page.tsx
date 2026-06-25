@@ -1,7 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useSalon } from "@/contexts/SalonProvider";
-import { getClinicSettings, saveClinicSettings } from "@/lib/firestore/settings";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  getClinicSettings,
+  saveClinicSettings,
+  getOwnerNotificationEmail,
+  saveOwnerNotificationEmail,
+} from "@/lib/firestore/settings";
 import { uploadClinicPhoto } from "@/lib/storage";
 import type { ClinicSettings } from "@/types";
 
@@ -34,7 +40,9 @@ const DAY_ORDER = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
 export default function AdminClinicPage() {
   const { salonId } = useSalon();
+  const { user } = useAuth();
   const [clinic, setClinic] = useState<ClinicSettings>(DEFAULT);
+  const [notifEmail, setNotifEmail] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -44,9 +52,14 @@ export default function AdminClinicPage() {
     getClinicSettings(salonId).then((c) => { if (c) setClinic(c); });
   }, []);
 
+  useEffect(() => {
+    if (user?.uid) getOwnerNotificationEmail(user.uid).then(setNotifEmail);
+  }, [user?.uid]);
+
   async function save() {
     setSaving(true);
     await saveClinicSettings(salonId, clinic);
+    if (user?.uid) await saveOwnerNotificationEmail(user.uid, notifEmail);
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -99,6 +112,19 @@ export default function AdminClinicPage() {
           <Input label="WhatsApp (ללא רווחים, עם קידומת 972)" value={clinic.whatsappNumber} onChange={(v) => setField("whatsappNumber", v)} dir="ltr" />
           <Input label="אינסטגרם URL" value={clinic.instagramUrl} onChange={(v) => setField("instagramUrl", v)} dir="ltr" />
           <Input label="Google Maps URL (קישור רגיל או Embed)" value={clinic.googleMapsUrl} onChange={(v) => setField("googleMapsUrl", v)} dir="ltr" />
+        </Section>
+
+        <Section title="התראות על תורים">
+          <Input
+            label="אימייל לקבלת התראות על תורים חדשים"
+            value={notifEmail}
+            onChange={setNotifEmail}
+            type="email"
+            dir="ltr"
+          />
+          <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+            לכתובת זו יישלח מייל בכל פעם שלקוחה קובעת תור. אם תושאר ריקה — ההתראות יישלחו לכתובת שאיתה נכנסת למערכת.
+          </p>
         </Section>
 
         {/* Home photo section */}

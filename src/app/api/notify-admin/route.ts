@@ -1,4 +1,4 @@
-import { Resend } from "resend";
+import sgMail from "@sendgrid/mail";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Timestamp } from "firebase-admin/firestore";
@@ -122,20 +122,25 @@ export async function POST(req: NextRequest) {
     const approvalUrl = `${APP_URL}/${salonId}/admin/appointments`;
     const salonName   = String(salonData.displayName ?? salonId);
 
-    // Get owner email from their user doc.
-    let adminEmail = process.env.ADMIN_EMAIL ?? "";
+    // Resolve the salon's alert recipient from the owner's (private) user doc:
+    // explicit notificationEmail first, then the real login email — never a global
+    // fallback (that would leak one salon's bookings into another owner's inbox).
+    let adminEmail = "";
     if (ownerUid) {
       const ownerSnap = await adminDb.collection("users").doc(ownerUid).get();
-      const ownerEmail = ownerSnap.data()?.authEmail as string | undefined;
-      if (ownerEmail && !ownerEmail.includes("noemail_")) adminEmail = ownerEmail;
+      const owner = ownerSnap.data() ?? {};
+      const explicit = (owner.notificationEmail as string | undefined)?.trim();
+      const login = owner.authEmail as string | undefined;
+      if (explicit) adminEmail = explicit;
+      else if (login && !login.includes("noemail_")) adminEmail = login;
     }
 
-    if (adminEmail && process.env.RESEND_API_KEY) {
-      const resend = new Resend(process.env.RESEND_API_KEY);
-      await resend.emails
-        .send({
-          from: `${escapeHtml(salonName)} <onboarding@resend.dev>`,
+    if (adminEmail && process.env.SENDGRID_API_KEY && process.env.SENDGRID_FROM) {
+      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+      try {
+        await sgMail.send({
           to: adminEmail,
+          from: { email: process.env.SENDGRID_FROM, name: salonName },
           subject: `💅 תור חדש — ${clientName}`,
           html: `
         <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background: #fdf6f0; border-radius: 16px;">
@@ -152,8 +157,10 @@ export async function POST(req: NextRequest) {
             <a href="${approvalUrl}" style="display: inline-block; padding: 14px 32px; background: #c9a882; color: white; text-decoration: none; border-radius: 12px; font-weight: bold; font-size: 16px;">✓ לאישור / דחיית התור</a>
           </div>
         </div>`,
-        })
-        .catch((err) => console.error("[notify-admin] email failed:", err));
+        });
+      } catch (err) {
+        console.error("[notify-admin] email failed:", err);
+      }
     }
 
     if (ownerUid) {

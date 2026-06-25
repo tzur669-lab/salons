@@ -1,6 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { setPersistence, browserLocalPersistence } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
 
 const DAYS = [
@@ -23,12 +25,21 @@ const fieldStyle: React.CSSProperties = {
 
 export default function OnboardPage() {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth();
+
+  // ── First-login auth (no pre-existing salon to log in through) ──────────────
+  const [authMode, setAuthMode] = useState<"login" | "signup">("signup");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authName, setAuthName] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
 
   const [step, setStep] = useState<1 | 2>(1);
   const [inviteCode, setInviteCode] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [phone, setPhone] = useState("");
+  const [notifEmail, setNotifEmail] = useState("");
   const [address, setAddress] = useState("");
   const [openTime, setOpenTime] = useState("09:00");
   const [closeTime, setCloseTime] = useState("19:00");
@@ -36,10 +47,58 @@ export default function OnboardPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  // Prefill the alert email with the owner's real login email (skip placeholders).
+  useEffect(() => {
+    if (user?.email && !user.email.includes("noemail_")) setNotifEmail(user.email);
+  }, [user?.email]);
+
   function toggleDay(idx: number) {
     setOpenDays((prev) =>
       prev.includes(idx) ? prev.filter((d) => d !== idx) : [...prev, idx]
     );
+  }
+
+  // After sign-in the global auth listener sets `user` → this page re-renders
+  // straight into the registration form (we're already on /onboard, no redirect).
+  async function handleGoogle() {
+    setAuthError("");
+    setAuthBusy(true);
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+      await signInWithGoogle();
+    } catch {
+      setAuthError("שגיאה בהתחברות עם Google");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function handleAuthSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setAuthError("");
+    if (authMode === "signup" && authName.trim().length < 2) {
+      setAuthError("הכנס שם מלא");
+      return;
+    }
+    if (!authEmail.includes("@")) { setAuthError("אימייל לא תקין"); return; }
+    if (authPassword.length < 6) { setAuthError("הסיסמה חייבת לפחות 6 תווים"); return; }
+    setAuthBusy(true);
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+      if (authMode === "signup") {
+        await signUpWithEmail(authEmail.trim(), authPassword, authName.trim());
+      } else {
+        await signInWithEmail(authEmail.trim(), authPassword);
+      }
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code;
+      if (code === "auth/email-already-in-use") setAuthError("האימייל כבר רשום — התחבר/י במקום");
+      else if (code === "auth/invalid-credential" || code === "auth/wrong-password") setAuthError("אימייל או סיסמה שגויים");
+      else if (authMode === "signup") setAuthError("שגיאה ביצירת חשבון");
+      else setAuthError("אימייל או סיסמה שגויים");
+    } finally {
+      setAuthBusy(false);
+    }
   }
 
   async function handleSubmit() {
@@ -66,6 +125,7 @@ export default function OnboardPage() {
           openTime,
           closeTime,
           openDays,
+          notificationEmail: notifEmail.trim(),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -110,18 +170,93 @@ export default function OnboardPage() {
         <div className="text-center mb-8">
           <div className="text-xs font-bold mb-1" style={{ letterSpacing: 3, color: "var(--rose)" }}>Salons 💅</div>
           <h1 className="text-2xl font-extrabold" style={{ color: "var(--foreground)" }}>הרשמת סלון חדש</h1>
-          <p className="text-sm mt-1" style={{ color: "var(--muted-foreground)" }}>
-            שלב {step} מתוך 2
-          </p>
+          {user && (
+            <p className="text-sm mt-1" style={{ color: "var(--muted-foreground)" }}>
+              שלב {step} מתוך 2
+            </p>
+          )}
         </div>
 
         {!user ? (
-          <div className="text-center py-4">
-            <p className="text-3xl mb-3">🔒</p>
-            <p className="font-semibold mb-2" style={{ color: "var(--foreground)" }}>נדרשת כניסה לחשבון</p>
-            <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
-              התחבר/י תחילה דרך קישור הסלון שלך, ואז חזור/י לעמוד זה להרשמה.
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-center mb-1" style={{ color: "var(--muted-foreground)" }}>
+              {authMode === "signup"
+                ? "צרי חשבון כדי לרשום את הסלון שלך"
+                : "התחברי לחשבון כדי להמשיך בהרשמה"}
             </p>
+
+            {/* Google */}
+            <button
+              onClick={handleGoogle}
+              disabled={authBusy}
+              type="button"
+              className="w-full flex items-center justify-center gap-3 py-3.5 px-4 font-bold disabled:opacity-60"
+              style={{ borderRadius: "var(--pill)", border: "1px solid var(--border-color)", color: "var(--foreground)", background: "var(--surface)" }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M23.745 12.27c0-.79-.07-1.54-.19-2.27h-11.3v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"/>
+                <path fill="#34A853" d="M12.255 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96h-3.98v3.09C3.515 21.3 7.565 24 12.255 24z"/>
+                <path fill="#FBBC05" d="M5.525 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62h-3.98a11.86 11.86 0 0 0 0 10.76l3.98-3.09z"/>
+                <path fill="#EA4335" d="M12.255 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C18.205 1.19 15.495 0 12.255 0c-4.69 0-8.74 2.7-10.71 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96z"/>
+              </svg>
+              {authBusy ? "מתחבר..." : "המשך עם Google"}
+            </button>
+
+            <div className="flex items-center gap-3 my-1">
+              <div className="flex-1 h-px" style={{ background: "var(--border-color)" }} />
+              <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>או</span>
+              <div className="flex-1 h-px" style={{ background: "var(--border-color)" }} />
+            </div>
+
+            {/* Email / password */}
+            <form onSubmit={handleAuthSubmit} className="flex flex-col gap-3">
+              {authMode === "signup" && (
+                <input
+                  style={fieldStyle}
+                  placeholder="שם מלא"
+                  value={authName}
+                  onChange={(e) => setAuthName(e.target.value)}
+                />
+              )}
+              <input
+                style={fieldStyle}
+                placeholder="אימייל"
+                value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+                type="email"
+                dir="ltr"
+                autoComplete="email"
+              />
+              <input
+                style={fieldStyle}
+                placeholder="סיסמה"
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+                type="password"
+                dir="ltr"
+                autoComplete={authMode === "signup" ? "new-password" : "current-password"}
+              />
+
+              {authError && <p className="text-sm text-center" style={{ color: "#e53e3e" }}>{authError}</p>}
+
+              <button
+                type="submit"
+                disabled={authBusy}
+                className="w-full py-3.5 font-bold text-white disabled:opacity-60"
+                style={{ background: "var(--primary)", borderRadius: "var(--pill)" }}
+              >
+                {authBusy ? "רגע..." : authMode === "signup" ? "יצירת חשבון" : "התחברות"}
+              </button>
+            </form>
+
+            <button
+              type="button"
+              onClick={() => { setAuthMode(authMode === "signup" ? "login" : "signup"); setAuthError(""); }}
+              className="w-full mt-1 text-sm text-center font-semibold"
+              style={{ color: "var(--rose)" }}
+            >
+              {authMode === "signup" ? "כבר יש לך חשבון? להתחברות" : "אין לך חשבון? ליצירת חשבון"}
+            </button>
           </div>
         ) : step === 1 ? (
           <div className="flex flex-col gap-4">
@@ -153,6 +288,17 @@ export default function OnboardPage() {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 type="tel"
+                dir="ltr"
+              />
+            </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: "var(--muted-foreground)" }}>אימייל להתראות על תורים (לא חובה)</label>
+              <input
+                style={fieldStyle}
+                placeholder="name@example.com"
+                value={notifEmail}
+                onChange={(e) => setNotifEmail(e.target.value)}
+                type="email"
                 dir="ltr"
               />
             </div>
