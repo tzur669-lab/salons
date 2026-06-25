@@ -73,6 +73,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, sent, pruned });
   } catch (err) {
     console.error("[notify-client-approval] error:", err);
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "server_error" }, { status: 500 });
   }
 }

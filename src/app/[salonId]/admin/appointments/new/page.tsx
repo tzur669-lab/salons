@@ -1,11 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Timestamp } from "firebase/firestore";
 import { useSalon } from "@/contexts/SalonProvider";
+import { auth } from "@/lib/firebase";
 import { getServices } from "@/lib/firestore/services";
-import { getAllClients } from "@/lib/firestore/users";
-import { createAdminAppointment } from "@/lib/firestore/appointments";
+import { getSalonClients } from "@/lib/firestore/users";
 import type { Service, AppUser } from "@/types";
 
 export default function AdminNewAppointmentPage() {
@@ -31,12 +30,12 @@ export default function AdminNewAppointmentPage() {
   const [notes,      setNotes]      = useState("");
 
   useEffect(() => {
-    Promise.all([getServices(salonId, false), getAllClients()]).then(([svcs, cls]) => {
+    Promise.all([getServices(salonId, false), getSalonClients(salonId)]).then(([svcs, cls]) => {
       setServices(svcs);
       setClients(cls);
       setLoading(false);
     });
-  }, []);
+  }, [salonId]);
 
   const selectedService = services.find((s) => s.id === serviceId);
   const selectedClient  = clients.find((c) => c.id === selectedClientId);
@@ -62,33 +61,50 @@ export default function AdminNewAppointmentPage() {
 
     setSaving(true);
     try {
-      const startDate = new Date(`${date}T${startTime}`);
-      const endDate   = new Date(startDate.getTime() + selectedService.duration * 60_000);
-
       const clientName  = clientType === "registered" ? (selectedClient?.name  ?? "") : customName.trim();
       const clientPhone = clientType === "registered" ? (selectedClient?.phone ?? "") : customPhone.trim();
       const clientId    = clientType === "registered" ? selectedClientId : "admin_entry";
 
-      await createAdminAppointment(salonId, {
-        clientId,
-        clientName,
-        clientPhone,
-        serviceId:       selectedService.id,
-        serviceName:     selectedService.name,
-        serviceDuration: selectedService.duration,
-        ...(selectedService.price != null && { servicePrice: selectedService.price }),
-        startTime: Timestamp.fromDate(startDate),
-        endTime:   Timestamp.fromDate(endDate),
-        status:    "approved",
-        notes:     notes.trim() || undefined,
-        isGuest:   false,
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) {
+        alert("יש להתחבר מחדש.");
+        setSaving(false);
+        return;
+      }
+
+      // Server route enforces the booking lock (no double-booking) and resolves
+      // the time in Asia/Jerusalem. Direct client writes are no longer allowed.
+      const res = await fetch("/api/admin/appointments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          salonId,
+          date,
+          startTime,
+          serviceId:       selectedService.id,
+          serviceName:     selectedService.name,
+          serviceDuration: selectedService.duration,
+          ...(selectedService.price != null && { servicePrice: selectedService.price }),
+          clientId,
+          clientName,
+          clientPhone: clientPhone || undefined,
+          notes: notes.trim() || undefined,
+          status: "approved",
+        }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        alert(data.error === "slot-taken"
+          ? "השעה הזו כבר תפוסה. בחרי שעה אחרת."
+          : "שגיאה ביצירת התור. נסי שנית.");
+        setSaving(false);
+        return;
+      }
 
       router.push(`/${salonId}/admin/appointments`);
     } catch (err) {
-      console.error("createAdminAppointment failed:", err);
+      console.error("admin create appointment failed:", err);
       alert("שגיאה ביצירת התור. נסי שנית.");
-    } finally {
       setSaving(false);
     }
   }

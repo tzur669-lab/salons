@@ -252,7 +252,7 @@ async function handle(req: NextRequest) {
     return await done(adminDb, { ok: true, checked: snap.size, confirmed, retrying, failedPermanently, skipped, pruned });
   } catch (err) {
     console.error("[appointment-reminders] error:", err);
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "server_error" }, { status: 500 });
   }
 }
 

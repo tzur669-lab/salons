@@ -5,6 +5,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import type { Message } from "firebase-admin/messaging";
 import { getAdminDb, getAdminMessaging } from "@/lib/firebase-admin";
 import { getTokensForUsers, deleteToken } from "@/lib/firestore/push-tokens-admin";
+import { checkRateLimit, rateKey } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -66,6 +67,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "invalid-body" }, { status: 400 });
     }
     const { salonId, appointmentId } = parsed.data;
+
+    // Unauthenticated route (guests trigger it) — cap per-IP to blunt enumeration/abuse.
+    const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
+    if (!(await checkRateLimit(rateKey("notify_admin_ip", ip), 30))) {
+      return NextResponse.json({ ok: false, error: "rate_limited" }, { status: 429 });
+    }
 
     const adminDb = getAdminDb();
 
