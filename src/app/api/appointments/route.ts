@@ -6,8 +6,8 @@ import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
 import { generateDaySlots } from "@/lib/booking-logic";
 import { parseDayKey, israelWallTimeToInstant } from "@/lib/timezone";
 import { checkRateLimit, rateKey } from "@/lib/server/rate-limit";
-import { readLockAndCheckOverlap, lockBumpData } from "@/lib/server/booking-lock";
-import { adminSalonCol, adminSalonSubDoc } from "@/lib/server/salon-path-admin";
+import { bookSlotTx } from "@/lib/server/booking-lock";
+import { upsertSalonClient } from "@/lib/server/salon-clients";
 import type { AvailabilityRule, BlockedTime } from "@/types";
 
 export const runtime = "nodejs";
@@ -148,7 +148,6 @@ export async function POST(req: NextRequest) {
       guestAccessTokenHash = createHash("sha256").update(guestToken).digest("hex");
     }
 
-    const newRef = salonRef.collection("appointmentsPending").doc();
     const apptData: Record<string, unknown> = {
       salonId,
       clientId:        uid ?? "guest",
@@ -167,14 +166,13 @@ export async function POST(req: NextRequest) {
     if (servicePrice != null) apptData.servicePrice = servicePrice;
     if (guestAccessTokenHash) apptData.guestAccessTokenHash = guestAccessTokenHash;
 
+    let appointmentId: string;
     try {
-      await adminDb.runTransaction(async (tx) => {
-        const { taken, lockRef } = await readLockAndCheckOverlap(
-          adminDb, tx, salonId, dayKey, dayStart, dayEnd, startDate, endDate
-        );
-        if (taken) throw new Error("SLOT_TAKEN");
-        tx.set(lockRef, lockBumpData(dayKey), { merge: true });
-        tx.create(newRef, apptData);
+      appointmentId = await bookSlotTx(adminDb, {
+        salonId, dayKey, dayStart, dayEnd,
+        start: startDate, end: endDate,
+        targetCollection: "appointmentsPending",
+        apptData,
       });
     } catch (txErr) {
       if (txErr instanceof Error && txErr.message === "SLOT_TAKEN") {
@@ -183,9 +181,17 @@ export async function POST(req: NextRequest) {
       throw txErr;
     }
 
+    // Register a non-guest booker in the salon's own client directory (scoped,
+    // replaces the global users/ scan). Best-effort — never fails the booking.
+    if (!isGuest && uid) {
+      await upsertSalonClient(adminDb, salonId, {
+        clientId: uid, name: resolvedName, phone: resolvedPhone,
+      }).catch(() => {});
+    }
+
     return NextResponse.json({
       ok: true,
-      appointmentId: newRef.id,
+      appointmentId,
       ...(guestToken ? { guestToken } : {}),
     });
   } catch (err) {

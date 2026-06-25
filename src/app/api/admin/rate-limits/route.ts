@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, items });
   } catch (err) {
     console.error("[admin/rate-limits] list error:", err);
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "server_error" }, { status: 500 });
   }
 }
 
@@ -97,6 +97,6 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[admin/rate-limits] delete error:", err);
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "server_error" }, { status: 500 });
   }
 }

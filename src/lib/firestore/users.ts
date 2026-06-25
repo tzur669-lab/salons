@@ -3,7 +3,6 @@ import {
   getDoc,
   setDoc,
   updateDoc,
-  collection,
   getDocs,
   query,
   where,
@@ -41,9 +40,13 @@ export async function setHistoryClearedAt(uid: string): Promise<void> {
   await updateDoc(doc(db, "users", uid), { historyClearedAt: serverTimestamp() });
 }
 
-export async function getAllClients(): Promise<AppUser[]> {
-  const q = query(collection(db, "users"), where("role", "==", "client"));
-  const snap = await getDocs(q);
+/**
+ * A salon's own clients, read from the per-salon directory
+ * (salons/{salonId}/clients). Replaces the old getAllClients() global scan that
+ * read every "client" user across the whole platform (cross-tenant leak + cost).
+ */
+export async function getSalonClients(salonId: string): Promise<AppUser[]> {
+  const snap = await getDocs(salonCol(salonId, "clients"));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as AppUser);
 }
 

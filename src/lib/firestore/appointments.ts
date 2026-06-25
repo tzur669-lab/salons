@@ -1,7 +1,4 @@
 import {
-  collection,
-  doc,
-  addDoc,
   updateDoc,
   getDocs,
   getDoc,
@@ -54,19 +51,6 @@ async function findCollection(
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
-export async function createAppointment(
-  salonId: string,
-  data: Omit<Appointment, "id" | "createdAt" | "updatedAt">
-): Promise<string> {
-  const ref = await addDoc(salonCol(salonId, COLL_PENDING), {
-    ...data,
-    status: "pending",
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  return ref.id;
-}
-
 export async function getAppointment(salonId: string, id: string): Promise<Appointment | null> {
   for (const coll of ALL_COLLS) {
     const snap = await getDoc(salonSubDoc(salonId, coll, id));
@@ -89,17 +73,6 @@ export async function getClientAppointments(salonId: string, clientId: string): 
 export async function getAllAppointments(salonId: string): Promise<Appointment[]> {
   const results = await Promise.all(
     ALL_COLLS.map((coll) =>
-      safeDocs(salonId, query(salonCol(salonId, coll), orderBy("startTime", "desc")))
-    )
-  );
-  return results
-    .flat()
-    .sort((a, b) => b.startTime.toMillis() - a.startTime.toMillis());
-}
-
-export async function getActiveAppointmentsForSlots(salonId: string): Promise<Appointment[]> {
-  const results = await Promise.all(
-    [COLL_PENDING, COLL_APPROVED].map((coll) =>
       safeDocs(salonId, query(salonCol(salonId, coll), orderBy("startTime", "desc")))
     )
   );
@@ -151,25 +124,6 @@ export async function updateAppointmentStatus(
     batch.delete(salonSubDoc(salonId, found.coll, id));
     await batch.commit();
   }
-}
-
-export async function requestAppointmentChange(
-  salonId: string,
-  id: string,
-  newStart: Date,
-  newEnd: Date
-): Promise<void> {
-  const found = await findCollection(salonId, id);
-  if (!found) return;
-  await updateDoc(salonSubDoc(salonId, found.coll, id), {
-    status: "change_requested",
-    changeRequest: {
-      requestedStartTime: Timestamp.fromDate(newStart),
-      requestedEndTime:   Timestamp.fromDate(newEnd),
-      requestedAt:        serverTimestamp(),
-    },
-    updatedAt: serverTimestamp(),
-  });
 }
 
 export async function cancelAppointment(salonId: string, id: string): Promise<void> {
@@ -261,17 +215,4 @@ export async function markPastAppointmentsAsCompleted(salonId: string): Promise<
   });
   await batch.commit();
   return docsToMove.length;
-}
-
-export async function createAdminAppointment(
-  salonId: string,
-  data: Omit<Appointment, "id" | "createdAt" | "updatedAt">
-): Promise<string> {
-  const coll = collectionForStatus(data.status);
-  const ref = await addDoc(salonCol(salonId, coll), {
-    ...data,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  return ref.id;
 }
