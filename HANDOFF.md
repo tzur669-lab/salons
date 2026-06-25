@@ -55,7 +55,8 @@ Context
 Server (Next.js API routes — Firebase Admin SDK, never run client-side)
   ├─ /api/onboard                — Validate invite code → create salons/{salonId} + subcollections
   ├─ /api/availability           — PUBLIC: bookable slots for one day, requires {salonId, dayKey, serviceDuration}
-  ├─ /api/appointments           — Create appointment under salons/{salonId}/appointmentsPending
+  ├─ /api/appointments           — Create appointment under salons/{salonId}/appointmentsPending (via bookSlotTx)
+  ├─ /api/admin/appointments     — Owner-gated manual create via bookSlotTx (same per-day lock; no double-booking)
   ├─ /api/notify-admin           — Email owner (reads ownerUid → users/{ownerUid}.notificationEmail ?? authEmail) + FCM push
   ├─ /api/notify-client-approval — Owner-gated (verifySalonOwner): push client on approval
   ├─ /api/cancel-appointment     — Client cancels own pending appointment (ID-token auth)
@@ -83,6 +84,7 @@ Data Layer (Firestore)
     appointmentsRejected/{id}    ← rejected + cancelled
     appointmentsCompleted/{id}   ← past completed
     clientNotes/{id}             ← Owner-only notes per client
+    clients/{uid}                ← Per-salon client directory (server-write, owner-read; scopes admin client list + broadcasts)
     slotLocks/{dayKey}           ← Per-day booking mutex (server-only, deny-all rules)
 
   GLOBAL (not per-salon):
@@ -110,7 +112,8 @@ Data Layer (Firestore)
 | `notify-admin` trusts only `{salonId, appointmentId}` | `api/notify-admin` | Unauthenticated (guests book); reads the real pending doc as source of truth; HTML-escaped; idempotent via `adminNotifiedAt`. Email goes to the OWNER via SendGrid (reads `salons/{salonId}.ownerUid` → `users/{ownerUid}.notificationEmail`, falling back to `authEmail` if unset), never a global ADMIN_EMAIL. |
 | Root layout is NOT `force-dynamic` | `app/layout.tsx` | All pages prerender `○ Static` (CDN-served). Do not add `export const dynamic`. |
 | Slot availability is computed SERVER-side | `api/availability` | Clients must NOT read appointment collections directly. Privacy + read-cost. |
-| Appointment-list rules require auth | `firestore.rules` | `list: if request.auth != null` on all appointment collections. |
+| Appointment `list` is owner-OR-self | `firestore.rules` | `list: if isSalonOwner(salonId) \|\| (request.auth != null && resource.data.clientId == request.auth.uid)` on all four status collections. Non-owner client queries MUST carry `where("clientId","==",uid)` or Firestore rejects them. Verified by `npm run test:rules`. |
+| All slot-allocating writes go through `bookSlotTx` | `lib/server/booking-lock.ts`, `/api/appointments`, `/api/admin/appointments` | The per-day mutex + overlap check live in one primitive. Never create/reschedule an appointment by a direct (client-SDK or Admin) write that skips it — that re-opens double-booking. |
 | `useAuth()` must be inside `<AuthProvider>` | `hooks/useAuth.tsx`, `providers.tsx` | Context consumer — throws if used outside provider. Layout-level components above `<Providers>` must NOT call `useAuth`. |
 | `useSalon()` must be inside `<SalonProvider>` | `contexts/SalonProvider.tsx`, `[salonId]/layout.tsx` | Context consumer — all components under `[salonId]/` can use it; components at root level cannot. |
 | `AdminNotificationsProvider` is INSIDE `SalonProvider` | `[salonId]/layout.tsx` | It uses `useSalon()` — must be mounted after `SalonProvider`. Was previously at root (before multi-tenant). |
@@ -285,6 +288,7 @@ approved → completed (endTime passed → cron moves to appointmentsCompleted)
 ## Testing & CI
 
 - `npm test` — vitest unit suite. Covers `timezone.ts` and `booking-logic.ts` (pure modules, Israel-tz invariants).
+- `npm run test:rules` — Firestore security-rules suite (`tests/firestore-rules.test.ts`) on the emulator (`firebase emulators:exec`). Proves the multi-tenant isolation invariants. Requires Java; **`firebase-tools` is pinned to v13** (v14+ needs JDK 21, this env has JDK 17). Excluded from `npm test`.
 - `npm run build` — Next.js build; all pages must show `○ Static` or `ƒ Dynamic`; zero TypeScript errors.
 - On Windows: if `npm test` errors with `@rolldown/binding-win32-x64-msvc`, run `npm install @rolldown/binding-win32-x64-msvc --no-save`.
 - `.github/workflows/ci.yml` — `npm test` + `next build` on every push/PR.
@@ -300,6 +304,78 @@ approved → completed (endTime passed → cron moves to appointmentsCompleted)
 ---
 
 ## Changelog
+
+### 2026-06-26 (session 5 — Salons) — Multi-tenant security hardening (Phase 1 + safe Phase 2/3)
+
+Closed the cross-tenant data-leak and double-booking holes surfaced by an architecture
+review, then verified the isolation invariants on the Firestore emulator. **Pre-launch
+(test data only), so all rule/collection changes are clean breaking changes — no migration.**
+
+**🔴 Isolation & integrity (Phase 1):**
+- **`firestore.rules` — appointment `list` is now owner-OR-self.** All four status collections
+  changed from `allow list: if request.auth != null` (any logged-in user could enumerate every
+  salon's client names+phones) to
+  `list: if isSalonOwner(salonId) || (request.auth != null && resource.data.clientId == request.auth.uid)`.
+  Clients keep direct client-SDK self-reads (real-time + offline); the existing
+  `getClientAppointments` already filters `where("clientId","==",uid)`, which is what the rule
+  requires (Firestore rules are not filters — an unconstrained client query is rejected).
+- **Deleted the legacy `salons/{salonId}/appointments` block** (it allowed `create: if true` —
+  anonymous writes). Nothing read it.
+- **Salon doc identity is now immutable:** `salons/{salonId}` update carries an
+  `affectedKeys().hasAny(['ownerUid','slug','createdAt'])` guard — an owner can no longer reassign
+  ownership or rewrite the slug/URL.
+- **Single booking primitive `bookSlotTx`** (`src/lib/server/booking-lock.ts`): the per-day mutex +
+  overlap check + write, extracted from `/api/appointments`. **Admin manual creation now goes
+  through it** via the NEW owner-gated route `POST /api/admin/appointments` (replaces the old
+  client-SDK `createAdminAppointment`, which bypassed the lock → double-booking). The admin page
+  posts date/time strings; the server resolves them in Asia/Jerusalem (also fixes a device-tz bug).
+  The pending→approved transition is unchanged — it reuses the slot the pending doc already holds,
+  so it is not a slot-allocating op.
+- **Per-salon client directory `salons/{salonId}/clients/{uid}`** (`src/lib/server/salon-clients.ts`):
+  thin membership record (clientId/name/phone/lastSeenAt, no canonical PII), upserted server-side on
+  booking for REGISTERED clients only (guests / free-text walk-ins skipped). Replaces the old
+  `getAllClients()` GLOBAL `users` scan. Repointed: admin clients page + new-appointment picker
+  (`getSalonClients(salonId)`), and `notify-update` recipients (was a platform-wide blast via
+  `getAllUidsWithTokens` → now `listSalonClientUids`). Rule: `clients` is owner-read, server-write.
+- **`delete-account` actually erases PII now.** It previously queried ROOT collections that don't
+  exist in the multi-tenant model (deleted nothing). Now uses `collectionGroup(...)` keyed by
+  `clientId==uid` across all salons to anonymize appointments + delete clientNotes + delete the
+  per-salon `clients` entries. Removed the dead `NEXT_PUBLIC_ADMIN_UID` guard and the legacy bucket.
+- **App Check** wired in `src/lib/firebase.ts` (browser-only, gated on
+  `NEXT_PUBLIC_FIREBASE_APPCHECK_KEY` — no-op until the reCAPTCHA v3 key + Console enforcement are
+  set). **`notify-admin`** (unauthenticated) now has a per-IP rate limit.
+
+**🟡 Safe Phase 2 / Phase 3:**
+- **Booking-store cross-tenant bleed fixed:** the Zustand wizard resets on `salonId` change
+  (`book/page.tsx`), so salon A's service/slot can't carry into salon B.
+- **Error envelope:** every `{ error: String(err) }` leak replaced with `"server_error"` (+ kept the
+  server-side `console.error`) across notify-update, notify-client-approval, admin/rate-limits,
+  register-push-token, cron.
+- **Hygiene:** deleted the 10 empty legacy route stub dirs (`src/app/admin`, `/book`, …); removed
+  dead `createAdminAppointment`, `createAppointment`, `getActiveAppointmentsForSlots`,
+  `requestAppointmentChange` + orphaned imports; gitignored Firebase emulator debug logs.
+
+**✅ Verification (all green):**
+- `npm run build` (type gate) ✓ · `npm test` 20/20 ✓
+- **NEW: `npm run test:rules`** — Firestore-emulator security-rules suite (`tests/firestore-rules.test.ts`,
+  `vitest.rules.config.ts`), **11/11 PASS**: cross-tenant list denied, client self-list allowed,
+  anonymous legacy-create denied, ownerUid reassignment denied, clients dir owner-only, slotLocks/
+  inviteCodes deny-all. Needs the emulator + Java. **NOTE: `firebase-tools` is pinned to v13** because
+  v14+ requires JDK 21 and this environment has JDK 17.
+
+**⏭️ Deferred (documented, NOT done — perf, needs browser QA; safe at MVP scale):**
+- Server-side salon prefetch in `[salonId]/layout.tsx` → seed `SalonProvider` (kill the ~200ms
+  client-side blank flash). **Directives:** seed via Context and DO NOT re-fetch on mount; convert
+  Firestore `Timestamp`→millis/ISO at the RSC boundary (class instances lose methods when serialized).
+- React Query adoption for hot reads. **Directives:** `salonId` in EVERY query key; `queryClient.clear()`
+  on salon-switch + logout (shared app-level client → cross-tenant cache-bleed risk otherwise);
+  `HydrationBoundary`/`initialData` only if/when server-prefetching RQ data.
+- `isOwner` redirect must gate on `authReady && salonReady` (server-instant salon + async auth widens
+  a false-`!isOwner` window → can bounce a real owner from `/admin`).
+- Bound the unbounded appointment queries (date floor + `limit`) — careful: reports/calendar need
+  history; bound per-caller, don't blanket `getAllAppointments`.
+- One bounded, deduped pending `onSnapshot` (currently always-on + duplicated in `admin/page.tsx`).
+- `safeDocs` should surface an error state instead of returning `[]` (masks failures as "empty").
 
 ### 2026-06-25 (session 1 — Salons) — Full multi-tenant conversion from Roni Nails
 
@@ -477,4 +553,4 @@ fork leftovers, not yet rebranded. No effect on the web app.
 
 ---
 
-_Last updated: 2026-06-25 (session 4 — Salons)_
+_Last updated: 2026-06-26 (session 5 — Salons, security hardening)_
