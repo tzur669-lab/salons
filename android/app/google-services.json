@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "903565127318",
+    "project_id": "roni-nail",
+    "storage_bucket": "roni-nail.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:903565127318:android:858c6fdfa8be75de409cb7",
+        "android_client_info": {
+          "package_name": "com.roninails.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "903565127318-1c4hr1qi3nvq8nvemcch9d2ttnioved6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.roninails.app",
+            "certificate_hash": "0fdd4c0932ad9cf99a7ac4ce6ffdf1b48bb6d299"
+          }
+        },
+        {
+          "client_id": "903565127318-ugg7kjv1mgi51dsf7qer4l2p2c29hp5u.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA3PnANeamu0HB0lhpnW_LpfZ3I08eTLVc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "903565127318-ugg7kjv1mgi51dsf7qer4l2p2c29hp5u.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "903565127318-f8ut8smvr34nlpa7vjc0n72gmns17c0a.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.roninails.app"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

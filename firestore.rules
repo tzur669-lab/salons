@@ -1,0 +1,190 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    // The owner of salon X is the UID stored in salons/{salonId}.ownerUid.
+    // This is the single admin signal — there are no global admin UIDs.
+    function isSalonOwner(salonId) {
+      return request.auth != null &&
+             exists(/databases/$(database)/documents/salons/$(salonId)) &&
+             get(/databases/$(database)/documents/salons/$(salonId)).data.ownerUid == request.auth.uid;
+    }
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // Validates a new client/guest appointment: status pending, correct clientId,
+    // ordered timestamps, sane sizes, and whitelisted fields. Blocks self-approval,
+    // impersonation, and junk writes. (All creates now go through /api/appointments
+    // via Admin SDK — this rule fires only for legacy direct client writes.)
+    function validNewAppointment() {
+      let d = request.resource.data;
+      return d.status == 'pending'
+        && (
+             (request.auth != null && d.clientId == request.auth.uid)
+             || (request.auth == null && d.clientId == 'guest')
+           )
+        && d.clientName is string && d.clientName.size() <= 100
+        && d.clientPhone is string && d.clientPhone.size() <= 30
+        && d.serviceId is string && d.serviceId.size() <= 200
+        && d.serviceName is string && d.serviceName.size() <= 200
+        && d.serviceDuration is number && d.serviceDuration > 0 && d.serviceDuration <= 600
+        && d.startTime is timestamp && d.endTime is timestamp
+        && d.endTime > d.startTime
+        && d.keys().hasOnly([
+             'clientId', 'clientName', 'clientPhone', 'serviceId', 'serviceName',
+             'serviceDuration', 'startTime', 'endTime', 'status', 'isGuest',
+             'createdAt', 'updatedAt', 'notes'
+           ]);
+    }
+
+    // An owner can touch their own pending request but NOT flip status, reassign
+    // ownership, or move the time — those are owner/server actions.
+    function ownerKeepsCriticalFields() {
+      let d = request.resource.data;
+      let p = resource.data;
+      return d.status == p.status
+        && d.clientId == p.clientId
+        && d.startTime == p.startTime
+        && d.endTime == p.endTime;
+    }
+
+
+    // ── Global collections (shared across all salons) ─────────────────────────
+
+    // Users — one shared account per person
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId);
+      // Owner may update their own profile but NOT change `role`.
+      allow update: if isOwner(userId) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']);
+    }
+
+    // Push tokens — written server-side, but the owner can read their own
+    match /pushTokens/{uid} {
+      allow read: if isOwner(uid);
+      allow write: if false; // server-only via Admin SDK
+      match /tokens/{tokenId} {
+        allow read: if isOwner(uid);
+        allow write: if false; // server-only
+      }
+    }
+
+    // Rate limiter + invite codes — server-only via Admin SDK
+    match /loginRateLimit/{key} {
+      allow read, write: if false;
+    }
+    match /inviteCodes/{code} {
+      allow read, write: if false;
+    }
+
+    // Cron status heartbeat — any authed user can read (salon owners check dashboards)
+    match /cronStatus/{id} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+
+    // ── Per-salon data (salons/{salonId}/…) ───────────────────────────────────
+
+    // The salon parent document — public read (name, status); owner write only
+    match /salons/{salonId} {
+      allow read: if true;
+      allow create: if false; // created by /api/onboard (Admin SDK)
+      allow update: if isSalonOwner(salonId);
+      allow delete: if false;
+
+      // ── Public salon settings (clients + guests need to read these) ─────────
+      match /clinicSettings/{id} {
+        allow read: if true;
+        allow write: if isSalonOwner(salonId);
+      }
+
+      match /paymentSettings/{id} {
+        allow read: if true;
+        allow write: if isSalonOwner(salonId);
+      }
+
+      match /services/{id} {
+        allow read: if true;
+        allow write: if isSalonOwner(salonId);
+      }
+
+      match /availabilityRules/{id} {
+        allow read: if true;
+        allow write: if isSalonOwner(salonId);
+      }
+
+      match /blockedTimes/{id} {
+        allow read: if true;
+        allow write: if isSalonOwner(salonId);
+      }
+
+      // ── Appointments — auth-only list (server-side /api/availability replaces
+      //    public listing) ────────────────────────────────────────────────────
+      match /appointmentsPending/{id} {
+        allow list: if request.auth != null;
+        allow get:  if request.auth != null && (
+          resource.data.clientId == request.auth.uid || isSalonOwner(salonId)
+        );
+        allow create: if false; // all creates via /api/appointments (Admin SDK)
+        allow update: if isSalonOwner(salonId) || (
+          request.auth != null
+          && resource.data.clientId == request.auth.uid
+          && ownerKeepsCriticalFields()
+        );
+        allow delete: if isSalonOwner(salonId);
+      }
+
+      match /appointmentsApproved/{id} {
+        allow list: if request.auth != null;
+        allow get:  if request.auth != null && (
+          resource.data.clientId == request.auth.uid || isSalonOwner(salonId)
+        );
+        allow write: if isSalonOwner(salonId);
+      }
+
+      match /appointmentsRejected/{id} {
+        allow list: if request.auth != null;
+        allow get:  if request.auth != null && (
+          resource.data.clientId == request.auth.uid || isSalonOwner(salonId)
+        );
+        allow write: if isSalonOwner(salonId);
+      }
+
+      match /appointmentsCompleted/{id} {
+        allow list: if request.auth != null;
+        allow get:  if request.auth != null && (
+          resource.data.clientId == request.auth.uid || isSalonOwner(salonId)
+        );
+        allow write: if isSalonOwner(salonId);
+      }
+
+      // Legacy flat collection — kept for reference during initial data migration
+      match /appointments/{id} {
+        allow get:  if request.auth != null && (
+          resource.data.clientId == request.auth.uid || isSalonOwner(salonId)
+        );
+        allow list: if request.auth != null;
+        allow create: if true;
+        allow update: if request.auth != null && (
+          resource.data.clientId == request.auth.uid || isSalonOwner(salonId)
+        );
+      }
+
+      // ── Owner-only collections ───────────────────────────────────────────────
+      match /clientNotes/{id} {
+        allow read, write: if isSalonOwner(salonId);
+      }
+
+      // Per-day booking mutex — server-only (Admin SDK bypasses rules)
+      match /slotLocks/{dayKey} {
+        allow read, write: if false;
+      }
+    }
+  }
+}

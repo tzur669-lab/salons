@@ -1,0 +1,123 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-primary: var(--primary);
+  --color-primary-dark: var(--primary-dark);
+  --color-rose: var(--rose);
+  --color-accent: var(--accent);
+  --color-border: var(--border-color);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --font-sans: var(--font-heebo);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Direction "פשוט" (Simple) — light, calm, soft pink accents.
+   The action color is a deep warm ink; pink (rose) is the accent
+   used for selected states, prices, step dots and active nav.
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --background: #FCF1F3;   /* page background — very light pink */
+  --foreground: #473A3E;   /* primary text — warm deep ink */
+  --surface: #FFFFFF;      /* cards */
+  --primary: #473A3E;      /* filled CTA background (ink) */
+  --primary-dark: #2E2528; /* CTA hover / strong text */
+  --rose: #CE7C9B;         /* pink accent */
+  --rose-soft: #FCEFF3;    /* pink tint surface */
+  --pink: #F6D2DB;         /* hero gradient pink */
+  --accent: #FCEFF3;       /* soft pink surface (summaries, inputs) */
+  --border-color: #F1DDE4; /* hairlines */
+  --line: #F1DDE4;
+  --muted: #FCEFF3;        /* disabled surface */
+  --muted-foreground: #9E848C; /* secondary text */
+  --faint: #CDB7BF;        /* faint text / dots */
+
+  --radius: 18px;
+  --radius-lg: 28px;
+  --pill: 999px;
+  --card-shadow: 0 6px 22px rgba(201, 124, 155, 0.09);
+  --shadow: 0 14px 36px rgba(201, 124, 155, 0.16);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  direction: rtl;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-heebo), "Heebo", Arial, sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--rose-soft); }
+::-webkit-scrollbar-thumb { background: var(--pink); border-radius: 3px; }
+
+/* Focus ring */
+*:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+/* ─── Native App Feel ──────────────────────────────────────── */
+
+/* No rubber-band overscroll bounce — looks like a web page, not an app */
+html, body {
+  overscroll-behavior: none;
+}
+
+/* Remove tap highlight flash on Android/iOS */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Disable text selection and long-press callout on chrome elements */
+button, a, nav, header, [role="button"], .no-select {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Eliminate 300ms tap delay on interactive elements */
+button, a, [role="button"], input[type="submit"], input[type="button"] {
+  touch-action: manipulation;
+}
+
+/* Smooth momentum scrolling for scrollable containers on iOS */
+.scroll-container {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ─── Safe Area: Sticky Header ─────────────────────────────── */
+/* Bottom nav already covers safe-area-inset-bottom in Navbar.tsx.
+   Top header must extend behind the status bar on notched devices. */
+header.sticky, header[class*="sticky"] {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* Landscape: left/right cutouts for notch */
+.safe-x {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* ─── Hide scrollbars on touch screens (cosmetic) ─────────── */
+@media (pointer: coarse) {
+  ::-webkit-scrollbar { display: none; }
+  * { scrollbar-width: none; }
+}

@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # Hard gates: unit tests + a production build (which type-checks the app).
+      - run: npm test
+      - run: npm run build
+        env:
+          # The Admin SDK initializes lazily, so the build needs no real secrets —
+          # placeholders just satisfy the client Firebase config at prerender.
+          NEXT_PUBLIC_FIREBASE_API_KEY: ci-dummy
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: roni-nails.vercel.app
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ci-dummy
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ci-dummy.appspot.com
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "000000000000"
+          NEXT_PUBLIC_FIREBASE_APP_ID: "1:000000000000:web:cidummy"
+
+      # Advisory: the repo has pre-existing react-hooks lint findings. Surface them
+      # without failing the run until they're cleaned up (tracked separately).
+      - name: Lint (advisory)
+        run: npm run lint
+        continue-on-error: true

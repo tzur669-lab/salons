@@ -1,0 +1,23 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// VERCEL PRO FALLBACK — NOT ACTIVE.
+//
+// We use a free EXTERNAL cron (cron-job.org) to fire the reminder endpoint,
+// because the Vercel HOBBY plan only allows ONE cron run PER DAY — and adding a
+// sub-daily cron to a real `vercel.json` will FAIL every deploy on Hobby.
+//
+// If you ever upgrade to Vercel Pro, you can drop the cron config below into a
+// file literally named `vercel.json` (rename this file, strip these comments —
+// JSON can't have comments) to let Vercel run it natively. Vercel automatically
+// sends `Authorization: Bearer ${CRON_SECRET}` when the CRON_SECRET env var is
+// set, which the endpoint already checks. Vercel Cron uses GET (the route
+// supports both GET and POST).
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/appointment-reminders",
+      "schedule": "*/10 * * * *"
+    }
+  ]
+}
