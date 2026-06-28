@@ -100,16 +100,15 @@ export default function DownloadPage() {
             style={{ background: "var(--rose-soft)", borderRadius: "var(--radius)" }}
           >
             <p className="font-bold text-sm mb-3">אנדרואיד / מחשב</p>
-            {installPrompt ? (
-              <button
-                onClick={handleInstall}
-                className="block w-full text-center text-base px-5 py-3 rounded-full font-bold text-white active:scale-95 transition-transform"
-                style={{ background: "var(--primary)" }}
-              >
-                התקן את האפליקציה
-              </button>
-            ) : (
-              <p className="text-xs leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
+            <button
+              onClick={installPrompt ? handleInstall : undefined}
+              className="block w-full text-center text-base px-5 py-3 rounded-full font-bold text-white active:scale-95 transition-transform"
+              style={{ background: "var(--primary)" }}
+            >
+              הוסיפו למסך הבית
+            </button>
+            {!installPrompt && (
+              <p className="mt-3 text-xs leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
                 פתחו את תפריט הדפדפן (⋮) ובחרו <strong>&quot;התקן אפליקציה&quot;</strong>{" "}
                 או <strong>&quot;הוסף למסך הבית&quot;</strong>.
               </p>
