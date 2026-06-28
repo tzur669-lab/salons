@@ -38,6 +38,7 @@ export default function BookPage() {
   const { user, appUser } = useAuth();
   const { salonId, salon } = useSalon();
   const store = useBookingStore();
+  const resetBooking = useBookingStore((s) => s.reset);
 
   const [services,     setServices]     = useState<Service[]>([]);
   const [slots,        setSlots]        = useState<TimeSlot[]>([]);
@@ -58,10 +59,15 @@ export default function BookPage() {
   const [calMonth,   setCalMonth]   = useState(minDate.getMonth());
   const [holidays,   setHolidays]   = useState<Map<string, string>>(new Map());
 
+  // Reset the wizard when entering a (different) salon so a prior salon's service/
+  // slot selection can never bleed into this tenant's booking flow (the Zustand
+  // store is module-global and otherwise survives cross-salon navigation).
+  useEffect(() => { resetBooking(); }, [salonId, resetBooking]);
+
   useEffect(() => {
     getServices(salonId, true).then(setServices).catch(console.error);
     getClinicSettings(salonId).then(setClinicSettings).catch(console.error);
-  }, []);
+  }, [salonId]);
 
   // Load Hebrew holidays whenever the displayed year changes
   useEffect(() => {

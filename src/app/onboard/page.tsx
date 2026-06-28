@@ -38,6 +38,7 @@ export default function OnboardPage() {
   const [step, setStep] = useState<1 | 2>(1);
   const [inviteCode, setInviteCode] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [englishName, setEnglishName] = useState("");
   const [phone, setPhone] = useState("");
   const [notifEmail, setNotifEmail] = useState("");
   const [address, setAddress] = useState("");
@@ -120,6 +121,7 @@ export default function OnboardPage() {
         body: JSON.stringify({
           inviteCode: inviteCode.trim(),
           displayName: displayName.trim(),
+          englishName: englishName.trim(),
           phone: phone.trim(),
           address: address.trim(),
           openTime,
@@ -279,6 +281,20 @@ export default function OnboardPage() {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
               />
+            </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: "var(--muted-foreground)" }}>שם באנגלית לכתובת האתר (לא חובה)</label>
+              <input
+                style={{ ...fieldStyle, direction: "ltr" }}
+                placeholder="gilat-nails"
+                value={englishName}
+                onChange={(e) => setEnglishName(e.target.value)}
+                dir="ltr"
+                autoComplete="off"
+              />
+              <p className="text-xs mt-1" style={{ color: "var(--muted-foreground)" }}>
+                זו הכתובת שתופיע בקישור הסלון. אם תשאירי ריק — תיווצר אוטומטית מהשם בעברית.
+              </p>
             </div>
             <div>
               <label className="text-xs mb-1 block" style={{ color: "var(--muted-foreground)" }}>טלפון / וואטסאפ</label>

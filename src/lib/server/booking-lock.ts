@@ -79,3 +79,42 @@ export async function readLockAndCheckOverlap(
 export function lockBumpData(dayKey: string): Record<string, unknown> {
   return { dayKey, lastBookingAt: Timestamp.now() };
 }
+
+export interface BookSlotParams {
+  salonId: string;
+  dayKey: string;
+  dayStart: Timestamp;
+  dayEnd: Timestamp;
+  start: Date;
+  end: Date;
+  /** Target status collection, e.g. "appointmentsPending" | "appointmentsApproved". */
+  targetCollection: string;
+  /** The full appointment document to write (server timestamps included by caller). */
+  apptData: Record<string, unknown>;
+  /** Appointment id to ignore in the overlap check (reschedule — skip own slot). */
+  excludeId?: string;
+}
+
+/**
+ * The single slot-allocating primitive. EVERY path that places an appointment on
+ * the timeline (client booking, admin manual create, reschedule) MUST go through
+ * this so the per-day mutex + overlap check are enforced atomically. Throws
+ * `Error("SLOT_TAKEN")` when the interval overlaps an existing pending/approved
+ * appointment. Returns the new document id.
+ */
+export async function bookSlotTx(db: Firestore, params: BookSlotParams): Promise<string> {
+  const salonRef = db.collection("salons").doc(params.salonId);
+  const newRef = salonRef.collection(params.targetCollection).doc();
+
+  await db.runTransaction(async (tx) => {
+    const { taken, lockRef } = await readLockAndCheckOverlap(
+      db, tx, params.salonId, params.dayKey, params.dayStart, params.dayEnd,
+      params.start, params.end, params.excludeId
+    );
+    if (taken) throw new Error("SLOT_TAKEN");
+    tx.set(lockRef, lockBumpData(params.dayKey), { merge: true });
+    tx.create(newRef, params.apptData);
+  });
+
+  return newRef.id;
+}

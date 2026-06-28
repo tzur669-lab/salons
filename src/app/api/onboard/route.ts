@@ -6,6 +6,7 @@ import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
 const body = z.object({
   inviteCode: z.string().min(1).max(100),
   displayName: z.string().min(2).max(60).trim(),
+  englishName: z.string().max(60).trim().optional(),
   phone: z.string().min(9).max(20).trim(),
   address: z.string().min(2).max(200).trim(),
   openTime: z.string().regex(/^\d{2}:\d{2}$/),
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "bad-request", details: parsed.error.flatten() }, { status: 400 });
   }
-  const { inviteCode, displayName, phone, address, openTime, closeTime, openDays, notificationEmail } = parsed.data;
+  const { inviteCode, displayName, englishName, phone, address, openTime, closeTime, openDays, notificationEmail } = parsed.data;
 
   const db = getAdminDb();
 
@@ -98,7 +99,9 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 5. Generate unique salonId slug ───────────────────────────────────────
-  const base = slugify(displayName) || "salon";
+  // Owner-chosen English name for the URL; falls back to auto-transliterating the
+  // Hebrew display name when left empty.
+  const base = slugify(englishName || displayName) || "salon";
   let salonId: string;
   try {
     salonId = await resolveUniqueSlug(db, base);
@@ -123,12 +126,18 @@ export async function POST(req: NextRequest) {
   const salonRef = db.collection("salons").doc(salonId);
   const batch = db.batch();
 
+  // Public booking link, stored for convenience (Console visibility / sharing).
+  // Derived from the slug — if the app domain ever changes this needs updating.
+  const appUrl = (process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/+$/, "");
+  const bookingUrl = appUrl ? `${appUrl}/${salonId}` : `/${salonId}`;
+
   // salons/{salonId}
   batch.set(salonRef, {
     slug: salonId,
     displayName,
     ownerUid: uid,
     status: "active",
+    bookingUrl,
     createdAt: FieldValue.serverTimestamp(),
   });
 

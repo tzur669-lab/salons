@@ -1,4 +1,5 @@
 import { initializeApp, getApps } from "firebase/app";
+import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
@@ -26,6 +27,17 @@ const firebaseConfig = {
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+
+// App Check — attests that client-SDK traffic comes from our real app, hardening
+// the now owner/self-scoped Firestore rules against scripted abuse. Browser-only and
+// gated on the reCAPTCHA v3 site key, so it's a no-op locally / until enforcement is
+// turned on in the Firebase Console. Set NEXT_PUBLIC_FIREBASE_APPCHECK_KEY in prod.
+if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_KEY) {
+  initializeAppCheck(app, {
+    provider: new ReCaptchaV3Provider(process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_KEY),
+    isTokenAutoRefreshEnabled: true,
+  });
+}
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);

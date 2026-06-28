@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getAdminMessaging } from "@/lib/firebase-admin";
+import { getAdminDb, getAdminMessaging } from "@/lib/firebase-admin";
 import { verifySalonOwner, adminErrorStatus } from "@/lib/admin-auth";
-import { getAllUidsWithTokens, getTokens, deleteToken } from "@/lib/firestore/push-tokens-admin";
+import { getTokens, deleteToken } from "@/lib/firestore/push-tokens-admin";
+import { listSalonClientUids } from "@/lib/server/salon-clients";
 import type { Message } from "firebase-admin/messaging";
 
 export const runtime = "nodejs";
@@ -47,7 +48,8 @@ export async function POST(req: NextRequest) {
     const base  = process.env.NEXT_PUBLIC_APP_URL ?? "";
     const downloadUrl = `${base}${DOWNLOAD_PATH}`;
 
-    const uids = await getAllUidsWithTokens();
+    // Scope recipients to THIS salon's own clients (was a platform-wide blast).
+    const uids = await listSalonClientUids(getAdminDb(), salonId);
     const targets = (
       await Promise.all(
         uids.map(async (uid) => {
@@ -93,6 +95,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, recipients: uids.length, sent, pruned });
   } catch (err) {
     console.error("[notify-update] error:", err);
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "server_error" }, { status: 500 });
   }
 }

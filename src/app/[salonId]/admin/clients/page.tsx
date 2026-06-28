@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useSalon } from "@/contexts/SalonProvider";
-import { getAllClients, addClientNote, getClientNotes } from "@/lib/firestore/users";
+import { getSalonClients, addClientNote, getClientNotes } from "@/lib/firestore/users";
 import { getClientAppointments } from "@/lib/firestore/appointments";
 import { useAuth } from "@/hooks/useAuth";
 import type { AppUser, Appointment, ClientNote } from "@/types";
@@ -16,7 +16,7 @@ export default function AdminClientsPage() {
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { getAllClients().then(setClients); }, []);
+  useEffect(() => { getSalonClients(salonId).then(setClients); }, [salonId]);
 
   async function openClient(c: AppUser) {
     setSelected(c);
