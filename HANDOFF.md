@@ -305,6 +305,73 @@ approved → completed (endTime passed → cron moves to appointmentsCompleted)
 
 ## Changelog
 
+### 2026-06-28 (session 7 — Salons) — 🔴 Bit money-routing fix + Portfolio (תיק עבודות) + Instagram on home
+
+**🔴 Critical fix — hardcoded Bit link routed clients to a stranger.**
+[src/app/[salonId]/clinic/page.tsx](src/app/[salonId]/clinic/page.tsx) had two fork-leftover
+constants — `BIT_PAY_URL` (Roni's personal `bitpay.co.il/app/me/3F9611C3…`) and `GOOGLE_MAPS_URL`
+(Roni's location) — and the "תשלום ב-Bit" button rendered **unconditionally** with
+`href={payment?.bitPayUrl || BIT_PAY_URL}`. Any salon whose owner never set her own Bit link
+sent a paying client to Roni's account. **Fix:** deleted both constants; the payment **card** now
+renders only when Bit or Paybox is configured; the **"תשלום ב-Bit" button** renders only when
+`payment.bitPayUrl` is set; the **map** renders only when `clinic.googleMapsUrl` is set. Same
+poisoned defaults removed from [admin/payment/page.tsx](src/app/[salonId]/admin/payment/page.tsx)
+(`bitPayUrl: ""`) and the [admin/clinic](src/app/[salonId]/admin/clinic/page.tsx) `DEFAULT`
+(`name: ""`, `googleMapsUrl: ""`). General principle now holds: **anything the owner didn't
+configure does not appear to clients.** (`api/onboard` already wrote empty values — data was clean.)
+
+**Portfolio (תיק עבודות).** Reuses the existing `ClinicSettings.galleryImages` field (no migration).
+- Admin: the old "גלריה (URLs)" section in `admin/clinic` is now **"תיק עבודות"** with a multi-file
+  **drag-and-drop uploader** (loading state disables the dropzone during compression), a thumbnail
+  grid with per-image remove, an optional add-by-URL row, and a **40-image cap**.
+- New **dedicated page** `src/app/[salonId]/portfolio/page.tsx` (server component): reads the gallery
+  server-side; **`redirect()`s to `/[salonId]` when empty** (no dead page for bookmarked links to a
+  cleared gallery); renders the new client `src/components/portfolio/PortfolioGallery.tsx`
+  (`next/image` grid + tap-to-zoom lightbox).
+- Home: a **"תיק עבודות" teaser card** (first ~4 photos) links to the page — shown only when photos exist.
+
+**Instagram on the entry page.** The salon home now shows an **inline Instagram button in the hero**
+(brand gradient), only when `clinicSettings.instagramUrl` is set. The existing Instagram button on
+"פרטים ומיקום" is unchanged.
+
+**Architecture (from review feedback):**
+- **No CLS:** `src/app/[salonId]/page.tsx` and `portfolio/page.tsx` are now **server components**
+  that read `clinicSettings` server-side (new `src/lib/server/clinic-read.ts`, reusing the lazy/
+  HMR-safe `getAdminDb()`) and pass `instagramUrl`/`galleryImages` as props to client children
+  (`HomeContent.tsx`, `PortfolioGallery.tsx`). The new hero/teaser are known at first paint — no
+  pop-in. Safe because `ClinicSettings` has **no Timestamp fields** → clean RSC→client serialization.
+- **`next/image`** for the portfolio grid + teaser — [next.config.ts](next.config.ts) **already**
+  whitelists `firebasestorage.googleapis.com`, so no config change. One-off `<img>` tags elsewhere
+  unchanged.
+- **Bounded uploads:** [src/lib/storage.ts](src/lib/storage.ts) now validates (jpg/png/webp, ≤15 MB
+  input) and **compresses** to ≤~1 MB / ≤1600 px via **`browser-image-compression`** (new dep)
+  before upload, for both the new `uploadGalleryPhoto` and the existing `uploadClinicPhoto`. Gallery
+  uploads go to `salons/{salonId}/gallery/...` — storage rules already cover `salons/{salonId}/**`
+  (no rules change).
+
+**✅ Verification:** `npm run build` clean (`/[salonId]/portfolio` registers `ƒ Dynamic`; `/` + `/onboard`
+stay `○ Static`); `npm test` 20/20. New dependency: `browser-image-compression`.
+
+### 2026-06-28 (session 6 — Salons) — Calendar "הוסף ליומן" button + salon share card
+
+**"הוסף ליומן" on calendar page (`src/app/[salonId]/admin/calendar/page.tsx`):**
+Added a 📅 "הוסף ליומן" Google Calendar button to each approved appointment card in the calendar view. Appears only when `a.status === "approved"`, below the service name. Uses the existing `buildGoogleCalendarLink` utility (same as the dashboard upcoming list). Event title: `לק {clientName}`, description: `שירות: {serviceName}`, times from the appointment.
+
+**Salon share card on admin dashboard (`src/app/[salonId]/admin/page.tsx`):**
+
+Added a "שיתוף הסלון" card to the admin dashboard (`src/app/[salonId]/admin/page.tsx`), positioned after the stats grid. Each owner now sees two copyable links on their dashboard:
+
+- **כתובת ההזמנה** — `bookingUrl/book` — the direct booking page to share with clients
+- **קישור להתקנה** — `bookingUrl` — the PWA root URL; clients open it and Add to Home Screen
+
+Each row has an "העתק" button (copies to clipboard, shows "הועתק ✓" for 2 s) and a "פתח" button (opens in new tab). Visible only to the owner (all `/admin` routes are already owner-guarded by `admin/layout.tsx`).
+
+**Fallback:** if `salon.bookingUrl` is not set (salons onboarded before session 5), the URL is constructed from `NEXT_PUBLIC_APP_URL + salonId`. No Firestore or API changes needed.
+
+`npm run build` passes clean.
+
+---
+
 ### 2026-06-26 (session 5 — Salons) — Multi-tenant security hardening (Phase 1 + safe Phase 2/3)
 
 Closed the cross-tenant data-leak and double-booking holes surfaced by an architecture
@@ -564,4 +631,4 @@ fork leftovers, not yet rebranded. No effect on the web app.
 
 ---
 
-_Last updated: 2026-06-26 (session 5 — Salons, security hardening)_
+_Last updated: 2026-06-28 (session 7 — Bit fix + Portfolio + Instagram on home)_

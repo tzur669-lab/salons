@@ -7,7 +7,7 @@ import type { PaymentSettings } from "@/types";
 const DEFAULT: PaymentSettings = {
   bitQrImageUrl: "",
   bitPhoneNumber: "",
-  bitPayUrl: "https://www.bitpay.co.il/app/me/3F9611C3-9973-F87E-2A4E-A968CD8CF9C7394F",
+  bitPayUrl: "",
   payboxPhoneNumber: "",
 };
 

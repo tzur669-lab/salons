@@ -23,6 +23,7 @@
     "@hebcal/core": "^4.4.0",
     "@sendgrid/mail": "^8.1.6",
     "@tanstack/react-query": "^5.0.0",
+    "browser-image-compression": "^2.0.2",
     "firebase": "^10.14.0",
     "firebase-admin": "^13.10.0",
     "next": "16.2.6",

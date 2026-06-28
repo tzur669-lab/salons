@@ -100,10 +100,11 @@ Firestore root
 ### Per-salon (`[salonId]/layout.tsx` wraps all)
 | Route | Who | Notes |
 |-------|-----|-------|
-| `/[salonId]/` | All | Salon home; CTAs to book/login |
+| `/[salonId]/` | All | **Server component** (reads clinicSettings) → `HomeContent`; CTA + Instagram hero button + portfolio teaser (each only when set) |
 | `/[salonId]/book` | All | 4-step booking wizard |
 | `/[salonId]/login` | Unauthenticated | Google + Email + Name sign-in |
-| `/[salonId]/clinic` | All | Address, hours, gallery, payment methods |
+| `/[salonId]/clinic` | All | Address, hours, portfolio strip, payment methods — **each shown only when the owner configured it** |
+| `/[salonId]/portfolio` | All | **Server component**: `next/image` grid + lightbox; `redirect()`s to `/[salonId]` when no photos |
 | `/[salonId]/my-appointments` | Logged-in clients | View, cancel, reschedule own appointments |
 | `/[salonId]/guest` | Anyone with token | Guest appointment lookup + cancel |
 | `/[salonId]/profile` | Logged-in | Email confirm, set password, delete account |
@@ -158,12 +159,13 @@ Firestore root
 |------|------|
 | `salon-path.ts` | Client path helpers: `salonCol(salonId, name)`, `salonSubDoc(salonId, col, id)` |
 | `server/salon-path-admin.ts` | Admin SDK helpers: `adminSalonCol(db, salonId, name)` |
+| `server/clinic-read.ts` | **Server-only** `getClinicSettingsServer(salonId)` for server components (home + portfolio); reuses lazy/HMR-safe `getAdminDb()` |
 | `firebase.ts` | Client Firebase init — no `ADMIN_UID` (retired) |
 | `firebase-admin.ts` | **Server-only** Admin SDK: `adminAuth`, `adminDb`, `adminMessaging` |
 | `admin-auth.ts` | `verifySalonOwner(authHeader, salonId)` + `adminErrorStatus()` |
 | `booking-logic.ts` | `generateDaySlots()` — pure, tz-correct, no Firebase at runtime |
 | `timezone.ts` | Asia/Jerusalem helpers (DST-aware via Intl, no dep) |
-| `storage.ts` | `uploadClinicPhoto(salonId, file)` → `salons/{salonId}/clinic/...` |
+| `storage.ts` | Image upload: validate (jpg/png/webp) + compress (≤~1MB/1600px via `browser-image-compression`) → `uploadClinicPhoto` (`clinic/...`) & `uploadGalleryPhoto` (`gallery/...`) |
 | `server/booking-lock.ts` | `readLockAndCheckOverlap(db, tx, salonId, dayKey, ...)` |
 | `server/guest-token.ts` | `findAppointmentByGuestToken(salonId, token)` — salon-scoped |
 | `server/rate-limit.ts` | Fixed-window rate limiter (shared by login + SMS reset) |
@@ -205,6 +207,10 @@ shared/
   ForgotPassword.tsx         — Password reset modal (uses useSalon() for salonId)
   SetPasswordForOAuth.tsx    — Set-password for Google-only accounts
   BackButton.tsx             — Back navigation
+
+portfolio/
+  PortfolioGallery.tsx       — Client gallery grid + lightbox (next/image); fed by the portfolio server page
+                               (home body lives in src/app/[salonId]/HomeContent.tsx)
 
 notifications/
   AdminNotificationsProvider.tsx — Subscribes to salons/{salonId}/appointmentsPending (when isOwner)

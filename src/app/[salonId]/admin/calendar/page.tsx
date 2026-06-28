@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSalon } from "@/contexts/SalonProvider";
 import { getAllAppointments } from "@/lib/firestore/appointments";
 import { getAvailabilityRules, getBlockedTimes } from "@/lib/firestore/settings";
+import { buildGoogleCalendarLink } from "@/lib/google-calendar";
 import type { Appointment, AvailabilityRule, BlockedTime } from "@/types";
 
 const STATUS_STYLE: Record<string, { label: string; ink: string; bg: string; bar: string }> = {
@@ -183,6 +184,22 @@ export default function AdminCalendarPage() {
                             </div>
                             <p className="text-sm font-bold truncate mt-0.5" style={{ color: "var(--foreground)" }}>{a.clientName}</p>
                             <p className="text-xs truncate" style={{ color: "var(--muted-foreground)" }}>{a.serviceName}</p>
+                            {a.status === "approved" && (
+                              <a
+                                href={buildGoogleCalendarLink({
+                                  title: `לק ${a.clientName}`,
+                                  startTime: start,
+                                  endTime: end,
+                                  description: `שירות: ${a.serviceName}`,
+                                })}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-block mt-2 text-xs px-3 py-1.5 rounded-full border font-bold active:scale-95"
+                                style={{ borderColor: "var(--border-color)", color: "var(--foreground)", background: "var(--surface)" }}
+                              >
+                                📅 הוסף ליומן
+                              </a>
+                            )}
                           </div>
                         </div>
                       );

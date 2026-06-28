@@ -39,7 +39,7 @@ function formatDateShort(d: Date): string {
 }
 
 export default function AdminDashboard() {
-  const { salonId } = useSalon();
+  const { salonId, salon } = useSalon();
   const [todayAppts, setTodayAppts]   = useState<Appointment[]>([]);
   const [pending,    setPending]      = useState<Appointment[]>([]);
   const [upcoming,   setUpcoming]     = useState<Appointment[]>([]);
@@ -48,6 +48,7 @@ export default function AdminDashboard() {
   const [loadingId,  setLoadingId]    = useState<string | null>(null);
   const [cronStale,  setCronStale]    = useState(false);
   const [cronAge,    setCronAge]      = useState<number | null>(null);
+  const [copiedKey,  setCopiedKey]    = useState<string | null>(null);
 
   useEffect(() => {
     // First mark any past approved appointments as completed, then load data
@@ -185,6 +186,16 @@ export default function AdminDashboard() {
     }
   }
 
+  function copyLink(url: string, key: string) {
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 2000);
+    });
+  }
+
+  const base = salon?.bookingUrl ?? `${process.env.NEXT_PUBLIC_APP_URL ?? "https://salonss.vercel.app"}/${salonId}`;
+  const bookingLink = `${base}/book`;
+
   if (loading) {
     return (
       <div className="pt-20 flex justify-center">
@@ -239,6 +250,42 @@ export default function AdminDashboard() {
         <StatCard label="תורים היום"     value={todayAppts.length} />
         <StatCard label="ממתינים לאישור" value={pending.length} highlight={pending.length > 0} />
       </div>
+
+      {/* Salon share card */}
+      <section className="mb-6 p-4 rounded-2xl" style={{ background: "var(--rose-soft)" }}>
+        <h2 className="font-semibold mb-3 text-right" style={{ color: "var(--rose)" }}>שיתוף הסלון</h2>
+        {[
+          { label: "כתובת ההזמנה", url: bookingLink },
+          { label: "קישור להתקנה",  url: base },
+        ].map(({ label, url }) => (
+          <div key={label} className="flex items-center gap-2 mb-2 last:mb-0">
+            <span className="text-sm shrink-0 w-28 text-right" style={{ color: "var(--muted-foreground)" }}>{label}</span>
+            <span
+              className="flex-1 text-xs rounded-lg px-2 py-1.5 truncate select-all"
+              dir="ltr"
+              style={{ background: "var(--surface)", color: "var(--foreground)", fontFamily: "monospace" }}
+            >
+              {url}
+            </span>
+            <button
+              onClick={() => copyLink(url, label)}
+              className="text-xs px-2 py-1.5 rounded-lg shrink-0 border font-bold active:scale-95"
+              style={{ borderColor: "var(--rose)", color: "var(--rose)", background: "var(--surface)" }}
+            >
+              {copiedKey === label ? "הועתק ✓" : "העתק"}
+            </button>
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs px-2 py-1.5 rounded-lg shrink-0 font-bold active:scale-95"
+              style={{ background: "var(--rose)", color: "#fff" }}
+            >
+              פתח
+            </a>
+          </div>
+        ))}
+      </section>
 
       {/* Today schedule */}
       {todayAppts.length > 0 && (

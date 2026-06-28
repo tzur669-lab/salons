@@ -8,17 +8,18 @@ import {
   getOwnerNotificationEmail,
   saveOwnerNotificationEmail,
 } from "@/lib/firestore/settings";
-import { uploadClinicPhoto } from "@/lib/storage";
+import { uploadClinicPhoto, uploadGalleryPhoto } from "@/lib/storage";
 import type { ClinicSettings } from "@/types";
 
+const MAX_GALLERY = 40; // cap the portfolio so the public page payload stays bounded
 const DEFAULT_HOURS = { open: "09:00", close: "19:00", isOpen: true };
 const DEFAULT: ClinicSettings = {
-  name: "רני חנימוב",
+  name: "",
   address: "",
   phone: "",
   whatsappNumber: "",
   instagramUrl: "",
-  googleMapsUrl: "https://maps.app.goo.gl/bc7jxKbh8PPgKMrT9?g_st=aw",
+  googleMapsUrl: "",
   homeImageUrl: "",
   openingHours: {
     sun: { ...DEFAULT_HOURS },
@@ -47,6 +48,9 @@ export default function AdminClinicPage() {
   const [saved, setSaved] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [galleryUploading, setGalleryUploading] = useState(false);
+  const [galleryDragOver, setGalleryDragOver] = useState(false);
+  const [galleryUrlInput, setGalleryUrlInput] = useState("");
 
   useEffect(() => {
     getClinicSettings(salonId).then((c) => { if (c) setClinic(c); });
@@ -87,10 +91,42 @@ export default function AdminClinicPage() {
       setField("homeImageUrl", url);
     } catch (err) {
       console.error("upload failed:", err);
-      alert("שגיאה בהעלאת התמונה. נסי שוב.");
+      alert(err instanceof Error ? err.message : "שגיאה בהעלאת התמונה. נסי שוב.");
     } finally {
       setUploading(false);
     }
+  }
+
+  // Portfolio (תיק עבודות) multi-upload. The loading flag disables the dropzone so
+  // a slow client-side compression of heavy phone photos can't be double-triggered.
+  async function handleGalleryFiles(files: FileList | File[]) {
+    const list = Array.from(files);
+    if (list.length === 0) return;
+    const room = MAX_GALLERY - clinic.galleryImages.length;
+    if (room <= 0) {
+      alert(`ניתן להעלות עד ${MAX_GALLERY} תמונות`);
+      return;
+    }
+    setGalleryUploading(true);
+    try {
+      const urls: string[] = [];
+      for (const file of list.slice(0, room)) {
+        try {
+          urls.push(await uploadGalleryPhoto(salonId, file));
+        } catch (err) {
+          alert(err instanceof Error ? err.message : "שגיאה בהעלאת תמונה");
+        }
+      }
+      if (urls.length) {
+        setClinic((prev) => ({ ...prev, galleryImages: [...prev.galleryImages, ...urls] }));
+      }
+    } finally {
+      setGalleryUploading(false);
+    }
+  }
+
+  function removeGalleryImage(index: number) {
+    setClinic((prev) => ({ ...prev, galleryImages: prev.galleryImages.filter((_, j) => j !== index) }));
   }
 
   return (
@@ -219,31 +255,95 @@ export default function AdminClinicPage() {
           })}
         </Section>
 
-        <Section title="גלריה (URLs)">
-          <div className="flex flex-col gap-2">
-            {clinic.galleryImages.map((url, i) => (
-              <div key={i} className="flex gap-2">
-                <input
-                  value={url}
-                  onChange={(e) => {
-                    const imgs = [...clinic.galleryImages];
-                    imgs[i] = e.target.value;
-                    setField("galleryImages", imgs);
-                  }}
-                  dir="ltr"
-                  className="flex-1 px-3 py-2 text-sm"
-                  style={{ borderRadius: 12, border: "1px solid var(--border-color)", background: "var(--accent)", color: "var(--foreground)", outline: "none" }}
-                />
-                <button onClick={() => setField("galleryImages", clinic.galleryImages.filter((_, j) => j !== i))}
-                  className="px-3 py-2 text-sm font-semibold" style={{ color: "var(--muted-foreground)" }}>הסרה</button>
-              </div>
-            ))}
+        <Section title="תיק עבודות">
+          <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+            התמונות שיוצגו ללקוחות בעמוד &quot;תיק העבודות&quot;. אם לא יוזנו תמונות — הקטע לא יופיע ללקוחות.
+          </p>
+
+          {/* Drag & drop / picker — multi-file */}
+          <div
+            onDragOver={(e) => { e.preventDefault(); setGalleryDragOver(true); }}
+            onDragLeave={() => setGalleryDragOver(false)}
+            onDrop={async (e) => {
+              e.preventDefault();
+              setGalleryDragOver(false);
+              if (e.dataTransfer.files?.length) await handleGalleryFiles(e.dataTransfer.files);
+            }}
+            onClick={() => { if (!galleryUploading) document.getElementById("gallery-input")?.click(); }}
+            className="border-2 border-dashed p-8 text-center cursor-pointer transition-all"
+            style={{
+              borderRadius: "var(--radius)",
+              borderColor: galleryDragOver ? "var(--rose)" : "var(--border-color)",
+              background: galleryDragOver ? "var(--rose-soft)" : "transparent",
+              opacity: galleryUploading ? 0.6 : 1,
+              pointerEvents: galleryUploading ? "none" : "auto",
+            }}
+          >
+            <p className="text-sm font-bold" style={{ color: "var(--foreground)" }}>
+              {galleryUploading ? "מעלה תמונות..." : "גררו תמונות לכאן או לחצו לבחירה"}
+            </p>
+            <p className="text-xs mt-1" style={{ color: "var(--muted-foreground)" }}>
+              אפשר לבחור כמה תמונות יחד · JPG, PNG, WEBP
+            </p>
+          </div>
+          <input
+            id="gallery-input"
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={async (e) => {
+              if (e.target.files?.length) await handleGalleryFiles(e.target.files);
+              e.target.value = "";
+            }}
+          />
+
+          {/* Thumbnail grid with remove */}
+          {clinic.galleryImages.length > 0 && (
+            <div className="grid grid-cols-3 gap-2">
+              {clinic.galleryImages.map((url, i) => (
+                <div key={i} className="relative" style={{ aspectRatio: "1 / 1" }}>
+                  <img
+                    src={url}
+                    alt={`עבודה ${i + 1}`}
+                    className="w-full h-full object-cover border"
+                    style={{ borderColor: "var(--border-color)", borderRadius: 12 }}
+                  />
+                  <button
+                    onClick={() => removeGalleryImage(i)}
+                    className="absolute top-1 left-1 w-7 h-7 rounded-full text-sm font-bold text-white flex items-center justify-center"
+                    style={{ background: "rgba(0,0,0,0.55)" }}
+                    aria-label="הסרה"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Optional: add by URL */}
+          <div className="flex gap-2">
+            <input
+              value={galleryUrlInput}
+              onChange={(e) => setGalleryUrlInput(e.target.value)}
+              dir="ltr"
+              placeholder="או הדביקו כתובת URL של תמונה"
+              className="flex-1 px-3 py-2 text-sm"
+              style={{ borderRadius: 12, border: "1px solid var(--border-color)", background: "var(--accent)", color: "var(--foreground)", outline: "none" }}
+            />
             <button
-              onClick={() => setField("galleryImages", [...clinic.galleryImages, ""])}
-              className="text-sm px-4 py-2.5 rounded-full border font-bold self-start"
+              onClick={() => {
+                const u = galleryUrlInput.trim();
+                if (!u) return;
+                if (clinic.galleryImages.length >= MAX_GALLERY) { alert(`ניתן להוסיף עד ${MAX_GALLERY} תמונות`); return; }
+                setClinic((prev) => ({ ...prev, galleryImages: [...prev.galleryImages, u] }));
+                setGalleryUrlInput("");
+              }}
+              className="px-4 py-2 text-sm font-bold rounded-full border self-start"
               style={{ borderColor: "var(--border-color)", color: "var(--rose)" }}
             >
-              הוספת תמונה
+              הוספה
             </button>
           </div>
         </Section>

@@ -8,10 +8,6 @@ import { openExternal } from "@/lib/open-external";
 import { AppShell } from "@/components/shared/AppShell";
 import type { ClinicSettings, PaymentSettings } from "@/types";
 
-// Fallback constants — used if admin hasn't saved these in Firestore yet
-const GOOGLE_MAPS_URL = "https://maps.app.goo.gl/bc7jxKbh8PPgKMrT9?g_st=aw";
-const BIT_PAY_URL     = "https://www.bitpay.co.il/app/me/3F9611C3-9973-F87E-2A4E-A968CD8CF9C7394F";
-
 const DAY_LABELS: Record<string, string> = {
   sun: "ראשון", mon: "שני", tue: "שלישי",
   wed: "רביעי", thu: "חמישי", fri: "שישי", sat: "שבת",
@@ -98,6 +94,11 @@ export default function ClinicPage() {
     fontSize: 13, fontWeight: 700, letterSpacing: 1, color: "var(--rose)",
   };
 
+  // Show a payment method ONLY when the owner configured it. No hardcoded fallback:
+  // a missing Bit link must never silently route a paying client to someone else.
+  const hasBit = !!(payment?.bitPayUrl?.trim() || payment?.bitPhoneNumber?.trim() || payment?.bitQrImageUrl?.trim());
+  const hasPaybox = !!payment?.payboxPhoneNumber?.trim();
+
   return (
     <AppShell>
       <div className="pt-6 pb-10 max-w-xl mx-auto">
@@ -124,8 +125,8 @@ export default function ClinicPage() {
         <div className="p-5 mb-4" style={card}>
           <h2 className="mb-2" style={sectionLabel}>כתובת</h2>
           <p className="text-base font-bold mb-1" style={{ color: "var(--foreground)" }}>{clinic.address}</p>
-          {(() => {
-            const mapsUrl = clinic.googleMapsUrl || GOOGLE_MAPS_URL;
+          {clinic.googleMapsUrl && (() => {
+            const mapsUrl = clinic.googleMapsUrl;
             return mapsUrl.includes("/maps/embed") ? (
               <div className="w-full h-48 overflow-hidden mt-3" style={{ borderRadius: 14 }}>
                 <iframe
@@ -178,23 +179,26 @@ export default function ClinicPage() {
           </div>
         </div>
 
-        {/* Payment */}
+        {(hasBit || hasPaybox) && (
         <div className="p-5 mb-4" style={card}>
           <h2 className="mb-4" style={sectionLabel}>תשלום</h2>
           <div className="flex flex-col gap-5">
 
             {/* ── Bit ── */}
+            {hasBit && (
             <div>
               <p className="text-xs font-bold mb-2" style={{ color: "var(--muted-foreground)" }}>Bit</p>
-              <a
-                href={(payment?.bitPayUrl) || BIT_PAY_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center w-full py-3 font-bold text-white mb-3 text-sm"
-                style={{ background: "#1A56DB", borderRadius: "var(--pill)" }}
-              >
-                תשלום ב-Bit
-              </a>
+              {payment?.bitPayUrl?.trim() && (
+                <a
+                  href={payment.bitPayUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center w-full py-3 font-bold text-white mb-3 text-sm"
+                  style={{ background: "#1A56DB", borderRadius: "var(--pill)" }}
+                >
+                  תשלום ב-Bit
+                </a>
+              )}
               {payment?.bitPhoneNumber && (
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-bold" style={{ color: "var(--foreground)" }} dir="ltr">
@@ -221,6 +225,7 @@ export default function ClinicPage() {
                 />
               )}
             </div>
+            )}
 
             {/* ── Paybox ── */}
             {payment?.payboxPhoneNumber && (
@@ -255,6 +260,7 @@ export default function ClinicPage() {
 
           </div>
         </div>
+        )}
 
         {/* Contact buttons */}
         <div className="flex flex-col gap-3">
