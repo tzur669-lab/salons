@@ -306,6 +306,10 @@ approved → completed (endTime passed → cron moves to appointmentsCompleted)
 
 ## Changelog
 
+### 2026-06-28 (session 10 — Salons) — Vercel deploy fix + cron fix + download page button
+
+**Download page (`/[salonId]/download`):** `beforeinstallprompt` doesn't always fire (Chrome has engagement heuristics), so the Android section was showing only text instructions with no button. Fixed: the "הוסיפו למסך הבית" button is now always rendered. If `beforeinstallprompt` is available, clicking it triggers the native PWA install dialog. If not, the text instructions appear below the button as a manual guide. Matches the visual style of the Roni Nails download page.
+
 ### 2026-06-28 (session 10 — Salons) — Vercel deploy fix + cron schedule fix
 
 **GitHub → Vercel webhook broken:** Multiple GitHub pushes were not triggering auto-deploy. Fixed by going to Vercel Project Settings → Git → Disconnect → Reconnect GitHub integration.
