@@ -57,6 +57,7 @@ Server (Next.js API routes — Firebase Admin SDK, never run client-side)
   ├─ /api/availability           — PUBLIC: bookable slots for one day, requires {salonId, dayKey, serviceDuration}
   ├─ /api/appointments           — Create appointment under salons/{salonId}/appointmentsPending (via bookSlotTx)
   ├─ /api/admin/appointments     — Owner-gated manual create via bookSlotTx (same per-day lock; no double-booking)
+  ├─ /api/admin/gallery-import   — Owner-gated: fetch an image by URL (Drive/direct) → re-host in salons/{salonId}/gallery
   ├─ /api/notify-admin           — Email owner (reads ownerUid → users/{ownerUid}.notificationEmail ?? authEmail) + FCM push
   ├─ /api/notify-client-approval — Owner-gated (verifySalonOwner): push client on approval
   ├─ /api/cancel-appointment     — Client cancels own pending appointment (ID-token auth)
@@ -304,6 +305,28 @@ approved → completed (endTime passed → cron moves to appointmentsCompleted)
 ---
 
 ## Changelog
+
+### 2026-06-28 (session 7 follow-up 2 — Salons) — Portfolio: import images by URL (Google Drive support)
+
+**Problem:** the portfolio "הוספה לפי URL" field stored the pasted link verbatim. A Google Drive
+**share** link (`drive.google.com/file/d/{ID}/view`) is an HTML page, not an image → broke in
+`<img>` / `next/image`; Drive's direct endpoints are unreliable for hotlinking.
+
+**Fix — server-side re-host (owner-gated import):** pasting a link now copies the image into our own
+Storage, so it always renders for clients (independent of Drive sharing/availability).
+- New `getAdminStorage()` in [firebase-admin.ts](src/lib/firebase-admin.ts) (lazy, HMR-safe; mirrors `getAdminDb`).
+- New route **`POST /api/admin/gallery-import`** `{ salonId, url }` (`verifySalonOwner`): normalizes a Drive
+  link → `drive.google.com/thumbnail?id={ID}&sz=w2000`, fetches server-side (no CORS), validates
+  `content-type: image/*` + ≤10 MB + basic SSRF guard (https-only, no private hosts), uploads via Admin SDK
+  to `salons/{salonId}/gallery/*` with a download token, returns the `firebasestorage.googleapis.com` URL
+  (already whitelisted for `next/image`).
+- [admin/clinic](src/app/[salonId]/admin/clinic/page.tsx) "הוספה" button is now async (sends the owner ID
+  token), shows loading, appends the returned Storage URL, maps errors to Hebrew. Help text lists supported links.
+
+**Supported links:** direct image URLs, and Google Drive share links **shared "Anyone with the link."**
+Instagram links are **not** supported (anti-hotlink + expiring CDN URLs) — upload from device instead.
+
+No new dependency; no rules/config change (re-hosted to the already-whitelisted Storage host). `npm run build` clean.
 
 ### 2026-06-28 (session 7 follow-up — Salons) — Deploy Storage rules (fix 403 on image upload) + contentType hardening
 
@@ -655,4 +678,4 @@ fork leftovers, not yet rebranded. No effect on the web app.
 
 ---
 
-_Last updated: 2026-06-28 (session 7 — Bit fix + Portfolio + Instagram on home)_
+_Last updated: 2026-06-28 (session 7 follow-up 2 — Portfolio import-by-URL / Google Drive)_

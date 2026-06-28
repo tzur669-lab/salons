@@ -142,6 +142,7 @@ Firestore root
 | `/api/cron-status` | GET | `verifySalonOwner` | Reminder cron heartbeat for dashboard |
 | `/api/notify-update` | POST | `verifySalonOwner` | Broadcast push to all salon clients |
 | `/api/admin/rate-limits` | GET/DELETE | `verifySalonOwner` | List/clear loginRateLimit counters |
+| `/api/admin/gallery-import` | POST | `verifySalonOwner` | Fetch an image by URL (Drive/direct) → re-host in `salons/{salonId}/gallery` |
 | `/api/admin-test-push` | POST | `verifySalonOwner` | Test push to owner's own device |
 | `/api/self-test-push` | POST | Bearer (any) | Test push to caller's own devices |
 | `/api/push-token-status` | GET | Bearer (any) | Token count + freshness |
@@ -161,7 +162,7 @@ Firestore root
 | `server/salon-path-admin.ts` | Admin SDK helpers: `adminSalonCol(db, salonId, name)` |
 | `server/clinic-read.ts` | **Server-only** `getClinicSettingsServer(salonId)` for server components (home + portfolio); reuses lazy/HMR-safe `getAdminDb()` |
 | `firebase.ts` | Client Firebase init — no `ADMIN_UID` (retired) |
-| `firebase-admin.ts` | **Server-only** Admin SDK: `adminAuth`, `adminDb`, `adminMessaging` |
+| `firebase-admin.ts` | **Server-only** Admin SDK: `getAdminAuth`, `getAdminDb`, `getAdminMessaging`, `getAdminStorage` (lazy, HMR-safe) |
 | `admin-auth.ts` | `verifySalonOwner(authHeader, salonId)` + `adminErrorStatus()` |
 | `booking-logic.ts` | `generateDaySlots()` — pure, tz-correct, no Firebase at runtime |
 | `timezone.ts` | Asia/Jerusalem helpers (DST-aware via Intl, no dep) |

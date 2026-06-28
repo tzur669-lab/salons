@@ -2,6 +2,7 @@ import { initializeApp, getApps, cert, type App } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getMessaging, type Messaging } from "firebase-admin/messaging";
+import { getStorage, type Storage } from "firebase-admin/storage";
 
 function getAdminApp(): App {
   // Idempotent: safe even if all three accessors call it (JS is single-threaded,
@@ -28,6 +29,7 @@ function getAdminApp(): App {
 let _auth: Auth | undefined;
 let _db: Firestore | undefined;
 let _messaging: Messaging | undefined;
+let _storage: Storage | undefined;
 
 export function getAdminAuth(): Auth {
   return (_auth ??= getAuth(getAdminApp()));
@@ -37,4 +39,7 @@ export function getAdminDb(): Firestore {
 }
 export function getAdminMessaging(): Messaging {
   return (_messaging ??= getMessaging(getAdminApp()));
+}
+export function getAdminStorage(): Storage {
+  return (_storage ??= getStorage(getAdminApp()));
 }

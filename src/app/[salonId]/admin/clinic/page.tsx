@@ -12,6 +12,16 @@ import { uploadClinicPhoto, uploadGalleryPhoto } from "@/lib/storage";
 import type { ClinicSettings } from "@/types";
 
 const MAX_GALLERY = 40; // cap the portfolio so the public page payload stays bounded
+
+const GALLERY_IMPORT_ERRORS: Record<string, string> = {
+  "not-an-image": "הקישור לא מוביל לתמונה. ודאי שזה קישור שיתוף ציבורי (\"כל מי שיש לו הקישור\") לתמונה.",
+  "fetch-failed": "לא הצלחנו להוריד את התמונה מהקישור. ודאי שהקובץ משותף לכולם.",
+  "too-large": "התמונה גדולה מדי (מקסימום 10MB).",
+  "bad-url": "כתובת לא תקינה. הדביקי קישור שמתחיל ב-https.",
+  forbidden: "אין הרשאה.",
+  unauthorized: "יש להתחבר מחדש.",
+  "invalid-token": "יש להתחבר מחדש.",
+};
 const DEFAULT_HOURS = { open: "09:00", close: "19:00", isOpen: true };
 const DEFAULT: ClinicSettings = {
   name: "",
@@ -127,6 +137,37 @@ export default function AdminClinicPage() {
 
   function removeGalleryImage(index: number) {
     setClinic((prev) => ({ ...prev, galleryImages: prev.galleryImages.filter((_, j) => j !== index) }));
+  }
+
+  // Add-by-URL → server imports (re-hosts) the image into our Storage so it always
+  // renders for clients (Drive share links, direct image URLs). Reuses galleryUploading.
+  async function addGalleryUrl() {
+    const url = galleryUrlInput.trim();
+    if (!url) return;
+    if (clinic.galleryImages.length >= MAX_GALLERY) {
+      alert(`ניתן להוסיף עד ${MAX_GALLERY} תמונות`);
+      return;
+    }
+    setGalleryUploading(true);
+    try {
+      const token = await user?.getIdToken();
+      const res = await fetch("/api/admin/gallery-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token ?? ""}` },
+        body: JSON.stringify({ salonId, url }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.url) {
+        setClinic((prev) => ({ ...prev, galleryImages: [...prev.galleryImages, data.url as string] }));
+        setGalleryUrlInput("");
+      } else {
+        alert(GALLERY_IMPORT_ERRORS[data?.error] ?? "לא ניתן להוסיף את התמונה מהקישור הזה");
+      }
+    } catch {
+      alert("שגיאה בהוספת התמונה. נסי שוב.");
+    } finally {
+      setGalleryUploading(false);
+    }
   }
 
   return (
@@ -322,30 +363,30 @@ export default function AdminClinicPage() {
             </div>
           )}
 
-          {/* Optional: add by URL */}
+          {/* Optional: add by URL — Drive share link or a direct image link (server re-hosts it) */}
           <div className="flex gap-2">
             <input
               value={galleryUrlInput}
               onChange={(e) => setGalleryUrlInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addGalleryUrl(); } }}
               dir="ltr"
-              placeholder="או הדביקו כתובת URL של תמונה"
-              className="flex-1 px-3 py-2 text-sm"
+              placeholder="קישור Google Drive או כתובת ישירה לתמונה"
+              disabled={galleryUploading}
+              className="flex-1 px-3 py-2 text-sm disabled:opacity-60"
               style={{ borderRadius: 12, border: "1px solid var(--border-color)", background: "var(--accent)", color: "var(--foreground)", outline: "none" }}
             />
             <button
-              onClick={() => {
-                const u = galleryUrlInput.trim();
-                if (!u) return;
-                if (clinic.galleryImages.length >= MAX_GALLERY) { alert(`ניתן להוסיף עד ${MAX_GALLERY} תמונות`); return; }
-                setClinic((prev) => ({ ...prev, galleryImages: [...prev.galleryImages, u] }));
-                setGalleryUrlInput("");
-              }}
-              className="px-4 py-2 text-sm font-bold rounded-full border self-start"
+              onClick={addGalleryUrl}
+              disabled={galleryUploading}
+              className="px-4 py-2 text-sm font-bold rounded-full border self-start disabled:opacity-60"
               style={{ borderColor: "var(--border-color)", color: "var(--rose)" }}
             >
-              הוספה
+              {galleryUploading ? "..." : "הוספה"}
             </button>
           </div>
+          <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+            אפשר להדביק קישור שיתוף מ-Google Drive (חובה לשתף &quot;כל מי שיש לו הקישור&quot;) או כתובת ישירה לתמונה — התמונה תישמר אצלנו כך שתמיד תוצג ללקוחות. קישורי אינסטגרם אינם נתמכים; העלי מהמכשיר במקום.
+          </p>
         </Section>
       </div>
     </div>
