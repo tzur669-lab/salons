@@ -46,7 +46,11 @@ async function processAndUpload(path: string, file: File): Promise<string> {
   validateImage(file);
   const optimized = await compressImage(file);
   const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, optimized);
+  // Set contentType explicitly so the Storage rule's `contentType.matches('image/.*')`
+  // check can never fail on a compressed blob whose type didn't carry through.
+  await uploadBytes(storageRef, optimized, {
+    contentType: optimized.type || file.type || "image/jpeg",
+  });
   return getDownloadURL(storageRef);
 }
 

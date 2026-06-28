@@ -305,6 +305,30 @@ approved → completed (endTime passed → cron moves to appointmentsCompleted)
 
 ## Changelog
 
+### 2026-06-28 (session 7 follow-up — Salons) — Deploy Storage rules (fix 403 on image upload) + contentType hardening
+
+**Symptom:** uploading a portfolio/home image → `403 (Forbidden)` from
+`firebasestorage.googleapis.com/.../salons/{salonId}/gallery/...`.
+
+**Root cause:** the repo's `storage.rules` (owner-write under `salons/{salonId}/**`) had **never been
+deployed** to `salons-19a2e` — the bucket still had Firebase's default deny-all rules, so every Storage
+write 403'd (the new gallery **and** the existing home-photo uploader). Firestore rules were already
+deployed (the app reads salon data), which masked the gap. All other rule conditions were satisfied
+(authenticated owner on the owner-guarded admin page, <1 MB after compression, image content-type,
+App Check not configured).
+
+**Fix:**
+- **Deployed Storage rules:** `firebase deploy --only storage --project salons-19a2e` (CLI logged in as
+  tzur669@gmail.com; released to the default bucket `salons-19a2e.firebasestorage.app`).
+- **Hardening ([src/lib/storage.ts](src/lib/storage.ts)):** `uploadBytes(..., { contentType:
+  optimized.type || file.type || "image/jpeg" })` so a compressed blob with a missing type can never
+  trip the rule's `contentType.matches('image/.*')` check.
+
+> ⚠️ Reminder: **Storage/Firestore rules are NOT auto-deployed by Vercel.** After editing
+> `storage.rules` / `firestore.rules`, run `firebase deploy --only storage` (or `firestore:rules`).
+
+`npm run build` clean.
+
 ### 2026-06-28 (session 7 — Salons) — 🔴 Bit money-routing fix + Portfolio (תיק עבודות) + Instagram on home
 
 **🔴 Critical fix — hardcoded Bit link routed clients to a stranger.**
