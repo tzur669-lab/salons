@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>רוני ניילס</title>
+  <title>אין חיבור לאינטרנט</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     body {
@@ -42,10 +42,6 @@
   <div class="icon">💅</div>
   <h1>אין חיבור לאינטרנט</h1>
   <p>נראה שאין חיבור לאינטרנט כרגע.<br>בדקי את החיבור ונסי שוב.</p>
-  <!-- Use explicit href instead of reload() — reload() in some Capacitor WebView
-       versions re-loads the local offline.html itself rather than re-attempting
-       the remote Vercel URL. The explicit href forces the WebView to navigate
-       to the production URL and re-trigger the normal remote URL loading path. -->
-  <button onclick="window.location.href='https://roni-nails.vercel.app'">נסי שוב</button>
+  <button onclick="window.location.reload()">נסי שוב</button>
 </body>
 </html>

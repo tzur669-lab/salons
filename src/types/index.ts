@@ -122,6 +122,9 @@ export interface ClinicSettings {
     sat: DayOpeningHours;
   };
   galleryImages: string[];
+  // Booking policy — both default to 0 (no restriction) when absent.
+  bookingLeadTimeHours?: number;    // minimum hours ahead a client must book (0 = instant)
+  cancellationCutoffHours?: number; // cannot cancel within this many hours of the appointment (0 = always allowed)
 }
 
 export interface PaymentSettings {

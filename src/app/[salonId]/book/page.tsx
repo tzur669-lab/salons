@@ -47,6 +47,7 @@ export default function BookPage() {
   const [slotsError,   setSlotsError]   = useState(false);
   const [slotsReload,  setSlotsReload]  = useState(0); // bump to retry
   const [submitting,   setSubmitting]   = useState(false);
+  const [submitError,  setSubmitError]  = useState<string | null>(null);
   const [done,         setDone]         = useState(false);
   const [guestRecoveryUrl, setGuestRecoveryUrl] = useState<string | null>(null);
 
@@ -127,6 +128,7 @@ export default function BookPage() {
     ) return;
 
     setSubmitting(true);
+    setSubmitError(null);
     try {
       const token = user ? await user.getIdToken() : null;
 
@@ -160,11 +162,11 @@ export default function BookPage() {
           err.error === "slot-not-found"
         ) {
           store.setStep(2);
-          alert("הזמן שבחרת כבר לא פנוי. אנא בחרו זמן אחר.");
+          setSubmitError("הזמן שבחרת כבר לא פנוי. אנא בחרו זמן אחר.");
           return;
         }
         if (err.error === "rate_limited") {
-          alert("בקשות רבות מדי. אנא המתינו מספר דקות ונסו שנית.");
+          setSubmitError("בקשות רבות מדי. אנא המתינו מספר דקות ונסו שנית.");
           return;
         }
         throw new Error(err.error ?? "server_error");
@@ -191,7 +193,7 @@ export default function BookPage() {
 
       setDone(true);
     } catch {
-      alert("שגיאה בשליחת הבקשה. נסו שוב.");
+      setSubmitError("שגיאה בשליחת הבקשה. נסו שוב.");
     } finally {
       setSubmitting(false);
     }
@@ -208,6 +210,7 @@ export default function BookPage() {
             startTime={store.selectedStartTime}
             endTime={store.selectedEndTime}
             clientName={clientName}
+            salonName={salon?.displayName ?? salonId}
             clinicAddress={clinicSettings?.address}
             guestRecoveryUrl={guestRecoveryUrl ?? undefined}
           />
@@ -475,6 +478,15 @@ export default function BookPage() {
                 </div>
               </div>
             </div>
+
+            {submitError && (
+              <p
+                className="text-sm text-center px-2 py-2 rounded-xl"
+                style={{ color: "#e53e3e", background: "#fff1f1", border: "1px solid #fecaca" }}
+              >
+                {submitError}
+              </p>
+            )}
 
             {user ? (
               <button

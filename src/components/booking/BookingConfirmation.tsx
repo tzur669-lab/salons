@@ -8,6 +8,7 @@ interface Props {
   startTime: Date;
   endTime: Date;
   clientName: string;
+  salonName?: string;
   clinicAddress?: string;
   guestRecoveryUrl?: string; // present only for guest bookings — link to view/cancel later
 }
@@ -16,7 +17,7 @@ function formatTime(d: Date): string {
   return d.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
 }
 
-export function BookingConfirmation({ service, startTime, endTime, clientName, guestRecoveryUrl }: Props) {
+export function BookingConfirmation({ service, startTime, endTime, clientName, salonName, guestRecoveryUrl }: Props) {
   return (
     <div
       style={{ borderRadius: "var(--radius-lg)", background: "var(--surface)", boxShadow: "var(--shadow)", overflow: "hidden" }}
@@ -32,7 +33,7 @@ export function BookingConfirmation({ service, startTime, endTime, clientName, g
           </svg>
         </div>
         <h2 className="text-2xl font-extrabold mt-5" style={{ color: "var(--foreground)" }}>
-          נשלח לרני
+          {salonName ? `נשלח ל${salonName}` : "הבקשה נשלחה!"}
         </h2>
         <p className="text-sm leading-relaxed mt-2" style={{ color: "var(--muted-foreground)" }}>
           התור ממתין לאישור. תקבלו עדכון בוואטסאפ בקרוב.
@@ -78,7 +79,7 @@ export function BookingConfirmation({ service, startTime, endTime, clientName, g
             ממתין לאישור
           </p>
           <p className="text-sm leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
-            רני תאשר את הבקשה ותעדכן אתכם בוואטסאפ.
+            {salonName ? `${salonName} תאשר את הבקשה` : "הבקשה תאושר"} ותעדכן אתכם בוואטסאפ.
           </p>
         </div>
       </div>
@@ -90,26 +91,45 @@ export function BookingConfirmation({ service, startTime, endTime, clientName, g
 
 function GuestRecoveryBlock({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
+  const canShare = typeof navigator !== "undefined" && !!navigator.share;
 
   async function copy() {
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 2500);
     } catch {
       // Clipboard blocked — the link is still visible/selectable below.
     }
   }
 
+  async function share() {
+    try {
+      await navigator.share({ title: "הקישור לתור שלי", url });
+    } catch {
+      // User cancelled share sheet — no-op.
+    }
+  }
+
   return (
     <div className="px-4 pb-7">
+      {/* Prominent warning banner */}
+      <div
+        className="flex items-start gap-3 p-4 mb-3"
+        style={{ borderRadius: "var(--radius)", background: "#fff7ed", border: "2px solid #f97316" }}
+      >
+        <span style={{ fontSize: 22, lineHeight: 1 }}>⚠️</span>
+        <div>
+          <p className="text-sm font-extrabold mb-0.5" style={{ color: "#9a3412" }}>
+            שמרו את הקישור עכשיו — לא יוצג שוב!
+          </p>
+          <p className="text-xs leading-relaxed" style={{ color: "#c2410c" }}>
+            הזמנתם ללא חשבון. רק דרך הקישור הזה תוכלו לצפות בתור ולבטל אותו. אם תאבדו אותו תצטרכו ליצור קשר עם הסלון.
+          </p>
+        </div>
+      </div>
+
       <div className="p-4" style={{ borderRadius: "var(--radius)", background: "var(--rose-soft)", border: "1px solid var(--border-color)" }}>
-        <p className="text-sm font-bold mb-1" style={{ color: "var(--foreground)" }}>
-          שמרו את הקישור לתור שלכם
-        </p>
-        <p className="text-xs leading-relaxed mb-3" style={{ color: "var(--muted-foreground)" }}>
-          הזמנתם כאורחים — דרך הקישור הזה תוכלו לצפות בתור ולבטל אותו בלי להתחבר.
-        </p>
         <a
           href={url}
           className="block text-xs font-semibold mb-3 break-all underline"
@@ -118,13 +138,24 @@ function GuestRecoveryBlock({ url }: { url: string }) {
         >
           {url}
         </a>
-        <button
-          onClick={copy}
-          className="w-full py-2.5 text-sm font-bold text-white"
-          style={{ background: "var(--rose)", borderRadius: "var(--pill)" }}
-        >
-          {copied ? "הקישור הועתק ✓" : "העתקת הקישור"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={copy}
+            className="flex-1 py-2.5 text-sm font-bold text-white"
+            style={{ background: "var(--rose)", borderRadius: "var(--pill)" }}
+          >
+            {copied ? "הועתק ✓" : "העתק קישור"}
+          </button>
+          {canShare && (
+            <button
+              onClick={share}
+              className="flex-1 py-2.5 text-sm font-bold"
+              style={{ background: "var(--surface)", borderRadius: "var(--pill)", border: "1.5px solid var(--rose)", color: "var(--rose)" }}
+            >
+              שיתוף
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

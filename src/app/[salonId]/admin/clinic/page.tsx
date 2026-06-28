@@ -57,10 +57,12 @@ export default function AdminClinicPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [galleryUploading, setGalleryUploading] = useState(false);
   const [galleryDragOver, setGalleryDragOver] = useState(false);
   const [galleryUrlInput, setGalleryUrlInput] = useState("");
+  const [galleryError, setGalleryError] = useState("");
 
   useEffect(() => {
     getClinicSettings(salonId).then((c) => { if (c) setClinic(c); });
@@ -96,12 +98,13 @@ export default function AdminClinicPage() {
   async function handlePhotoFile(file: File) {
     if (!file.type.startsWith("image/")) return;
     setUploading(true);
+    setUploadError("");
     try {
       const url = await uploadClinicPhoto(salonId, file);
       setField("homeImageUrl", url);
     } catch (err) {
       console.error("upload failed:", err);
-      alert(err instanceof Error ? err.message : "שגיאה בהעלאת התמונה. נסי שוב.");
+      setUploadError(err instanceof Error ? err.message : "שגיאה בהעלאת התמונה. נסי שוב.");
     } finally {
       setUploading(false);
     }
@@ -114,17 +117,18 @@ export default function AdminClinicPage() {
     if (list.length === 0) return;
     const room = MAX_GALLERY - clinic.galleryImages.length;
     if (room <= 0) {
-      alert(`ניתן להעלות עד ${MAX_GALLERY} תמונות`);
+      setGalleryError(`ניתן להעלות עד ${MAX_GALLERY} תמונות`);
       return;
     }
     setGalleryUploading(true);
+    setGalleryError("");
     try {
       const urls: string[] = [];
       for (const file of list.slice(0, room)) {
         try {
           urls.push(await uploadGalleryPhoto(salonId, file));
         } catch (err) {
-          alert(err instanceof Error ? err.message : "שגיאה בהעלאת תמונה");
+          setGalleryError(err instanceof Error ? err.message : "שגיאה בהעלאת תמונה");
         }
       }
       if (urls.length) {
@@ -145,10 +149,11 @@ export default function AdminClinicPage() {
     const url = galleryUrlInput.trim();
     if (!url) return;
     if (clinic.galleryImages.length >= MAX_GALLERY) {
-      alert(`ניתן להוסיף עד ${MAX_GALLERY} תמונות`);
+      setGalleryError(`ניתן להוסיף עד ${MAX_GALLERY} תמונות`);
       return;
     }
     setGalleryUploading(true);
+    setGalleryError("");
     try {
       const token = await user?.getIdToken();
       const res = await fetch("/api/admin/gallery-import", {
@@ -161,10 +166,10 @@ export default function AdminClinicPage() {
         setClinic((prev) => ({ ...prev, galleryImages: [...prev.galleryImages, data.url as string] }));
         setGalleryUrlInput("");
       } else {
-        alert(GALLERY_IMPORT_ERRORS[data?.error] ?? "לא ניתן להוסיף את התמונה מהקישור הזה");
+        setGalleryError(GALLERY_IMPORT_ERRORS[data?.error] ?? "לא ניתן להוסיף את התמונה מהקישור הזה");
       }
     } catch {
-      alert("שגיאה בהוספת התמונה. נסי שוב.");
+      setGalleryError("שגיאה בהוספת התמונה. נסי שוב.");
     } finally {
       setGalleryUploading(false);
     }
@@ -241,6 +246,10 @@ export default function AdminClinicPage() {
               if (file) await handlePhotoFile(file);
             }}
           />
+
+          {uploadError && (
+            <p className="text-sm" style={{ color: "#e53e3e" }}>{uploadError}</p>
+          )}
 
           {/* OR URL input */}
           <Input
@@ -387,6 +396,51 @@ export default function AdminClinicPage() {
           <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>
             אפשר להדביק קישור שיתוף מ-Google Drive (חובה לשתף &quot;כל מי שיש לו הקישור&quot;) או כתובת ישירה לתמונה — התמונה תישמר אצלנו כך שתמיד תוצג ללקוחות. קישורי אינסטגרם אינם נתמכים; העלי מהמכשיר במקום.
           </p>
+          {galleryError && (
+            <p className="text-sm" style={{ color: "#e53e3e" }}>{galleryError}</p>
+          )}
+        </Section>
+
+        <Section title="מדיניות הזמנות">
+          <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+            הגדרות אלו ייאכפו אוטומטית כאשר לקוחות קובעות וומבטלות תורים.
+          </p>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: "var(--muted-foreground)" }}>
+              זמן מינימלי להזמנה מראש (שעות) — 0 = מיידי
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={168}
+              value={clinic.bookingLeadTimeHours ?? 0}
+              onChange={(e) => setField("bookingLeadTimeHours", Math.max(0, Math.floor(Number(e.target.value))))}
+              className="w-full px-4 py-3"
+              style={{ borderRadius: 14, border: "1px solid var(--border-color)", background: "var(--accent)", color: "var(--foreground)", outline: "none" }}
+              dir="ltr"
+            />
+            <p className="text-xs mt-1" style={{ color: "var(--muted-foreground)" }}>
+              לדוגמה: 2 — לא יאפשר הזמנה לפחות משעתיים בהיום
+            </p>
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: "var(--muted-foreground)" }}>
+              זמן מינימלי לביטול לפני התור (שעות) — 0 = ביטול תמיד מותר
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={168}
+              value={clinic.cancellationCutoffHours ?? 0}
+              onChange={(e) => setField("cancellationCutoffHours", Math.max(0, Math.floor(Number(e.target.value))))}
+              className="w-full px-4 py-3"
+              style={{ borderRadius: 14, border: "1px solid var(--border-color)", background: "var(--accent)", color: "var(--foreground)", outline: "none" }}
+              dir="ltr"
+            />
+            <p className="text-xs mt-1" style={{ color: "var(--muted-foreground)" }}>
+              לדוגמה: 24 — לא יאפשר ביטול תוך 24 שעות מהתור
+            </p>
+          </div>
         </Section>
       </div>
     </div>

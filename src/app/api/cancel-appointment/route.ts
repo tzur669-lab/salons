@@ -36,7 +36,10 @@ export async function POST(req: NextRequest) {
     const adminDb  = getAdminDb();
     const salonRef = adminDb.collection("salons").doc(salonId);
     const pendingRef  = salonRef.collection("appointmentsPending").doc(appointmentId);
-    const snap = await pendingRef.get();
+    const [snap, clinicSnap] = await Promise.all([
+      pendingRef.get(),
+      salonRef.collection("clinicSettings").doc("main").get(),
+    ]);
 
     if (!snap.exists) {
       return NextResponse.json({ ok: false, error: "not-pending" }, { status: 409 });
@@ -47,6 +50,19 @@ export async function POST(req: NextRequest) {
     }
     if (data.status !== "pending" && data.status !== "change_requested") {
       return NextResponse.json({ ok: false, error: "not-cancellable" }, { status: 409 });
+    }
+
+    // Enforce owner-configured cancellation cutoff.
+    const clinicData          = clinicSnap.data() ?? {};
+    const cutoffHours: number = (clinicData.cancellationCutoffHours as number | undefined) ?? 0;
+    if (cutoffHours > 0) {
+      const startTs = data.startTime as Timestamp | undefined;
+      if (startTs) {
+        const msUntilStart = startTs.toMillis() - Date.now();
+        if (msUntilStart < cutoffHours * 3_600_000) {
+          return NextResponse.json({ ok: false, error: "cancellation-cutoff" }, { status: 409 });
+        }
+      }
     }
 
     const rejectedRef = salonRef.collection("appointmentsRejected").doc(appointmentId);

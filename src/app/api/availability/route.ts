@@ -39,9 +39,10 @@ export async function POST(req: NextRequest) {
     const startTs = Timestamp.fromDate(israelWallTimeToInstant(year, monthIndex, day, 0, 0));
     const endTs   = Timestamp.fromDate(israelWallTimeToInstant(year, monthIndex, day + 1, 0, 0));
 
-    const [rulesSnap, blockedSnap, ...apptSnaps] = await Promise.all([
+    const [rulesSnap, blockedSnap, clinicSnap, ...apptSnaps] = await Promise.all([
       adminSalonCol(adminDb, salonId, "availabilityRules").get(),
       adminSalonCol(adminDb, salonId, "blockedTimes").get(),
+      adminDb.collection("salons").doc(salonId).collection("clinicSettings").doc("main").get(),
       ...ACTIVE_COLLS.map((c) =>
         adminSalonCol(adminDb, salonId, c)
           .where("startTime", ">=", startTs)
@@ -66,8 +67,12 @@ export async function POST(req: NextRequest) {
     }
 
     const now = Date.now();
+    const clinicData = clinicSnap.data() ?? {};
+    const leadTimeMs = ((clinicData.bookingLeadTimeHours as number | undefined) ?? 0) * 3_600_000;
+    const cutoffMs   = now + leadTimeMs;
+
     const slots = generateDaySlots(dayKey, serviceDuration, rules, blocked, existing)
-      .filter((s) => s.startTime.getTime() > now)
+      .filter((s) => s.startTime.getTime() > cutoffMs)
       .map((s) => ({
         startTime: s.startTime.toISOString(),
         endTime:   s.endTime.toISOString(),

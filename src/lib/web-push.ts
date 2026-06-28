@@ -36,6 +36,19 @@ export async function isWebPushSupported(): Promise<boolean> {
   }
 }
 
+/**
+ * Registers the Firebase Messaging service worker without requiring notification
+ * permission. Call this on the /download page so Chrome's installability heuristic
+ * fires `beforeinstallprompt` even for first-time visitors who never granted push.
+ * Safe to call repeatedly — the browser deduplicates SW registrations by URL.
+ */
+export function ensureServiceWorkerRegistered(): void {
+  if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register(SW_URL).catch(() => {
+    // Non-fatal: SW registration failure doesn't break the page.
+  });
+}
+
 /** Whether the app is running as an installed PWA (required for push on iOS). */
 export function isStandalonePWA(): boolean {
   if (typeof window === "undefined") return false;

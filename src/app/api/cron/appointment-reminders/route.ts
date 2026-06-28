@@ -16,6 +16,10 @@ const DUE_MS         = 60 * 60 * 1000;
 const MAX_PER_RUN    = 200;
 const MAX_ATTEMPTS   = 5;
 const STALE_CLAIM_MS = 5 * 60 * 1000;
+// Sweep: each doc costs 2 batch ops (set completed + delete approved). Keeping ≤240 docs
+// per run (480 ops) stays safely under Firestore's 500-op batch limit. Repeat runs clear
+// any backlog left over from outages or the first run after wiring up the cron scheduler.
+const SWEEP_LIMIT    = 240;
 
 function secretMatches(provided: string, expected: string): boolean {
   const a = Buffer.from(provided);
@@ -56,13 +60,17 @@ async function handle(req: NextRequest) {
     const nowTs   = Timestamp.fromMillis(now);
 
     // ── 0. Sweep past approved appointments → completed (cross-salon collectionGroup) ──
+    // Limited to SWEEP_LIMIT docs per run (2 batch ops each → stays under 500-op limit).
+    // Any backlog beyond SWEEP_LIMIT is processed by subsequent cron runs.
     const pastSnap = await adminDb
       .collectionGroup("appointmentsApproved")
       .where("endTime", "<=", Timestamp.fromMillis(now))
+      .limit(SWEEP_LIMIT)
       .get();
 
     if (!pastSnap.empty) {
-      const sweepBatch = adminDb.batch();
+      let sweepBatch = adminDb.batch();
+      let sweepOps   = 0;
       let sweepCount = 0;
       for (const d of pastSnap.docs) {
         if (d.data().status !== "approved") continue;
@@ -78,9 +86,18 @@ async function handle(req: NextRequest) {
           updatedAt: FieldValue.serverTimestamp(),
         });
         sweepBatch.delete(d.ref);
+        sweepOps  += 2; // set + delete
         sweepCount++;
+        // Flush at 480 ops (safety margin below the 500-op limit).
+        if (sweepOps >= 480) {
+          await sweepBatch.commit().catch((e) =>
+            console.error("[appointment-reminders] sweep batch failed:", e)
+          );
+          sweepBatch = adminDb.batch();
+          sweepOps   = 0;
+        }
       }
-      if (sweepCount > 0) {
+      if (sweepCount > 0 && sweepOps > 0) {
         await sweepBatch.commit().catch((e) =>
           console.error("[appointment-reminders] sweep failed:", e)
         );
@@ -88,11 +105,13 @@ async function handle(req: NextRequest) {
     }
 
     // ── 1. Approved appointments starting within the next 70 minutes (cross-salon) ──
+    // Capped at MAX_PER_RUN; appointments beyond the cap are picked up by the next run.
     const snap = await adminDb
       .collectionGroup("appointmentsApproved")
       .where("startTime", ">=", nowTs)
       .where("startTime", "<=", horizon)
       .orderBy("startTime")
+      .limit(MAX_PER_RUN)
       .get();
 
     // Pre-load salon names for the appointments we'll process.

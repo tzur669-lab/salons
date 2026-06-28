@@ -71,31 +71,45 @@ export async function POST(req: NextRequest) {
 
   const db = getAdminDb();
 
-  // ── 3. Validate invite code ───────────────────────────────────────────────
+  // ── 3–4. Atomically validate invite code + owner uniqueness ─────────────────
+  // A transaction makes both checks race-safe: two concurrent onboard requests
+  // with the same code, or from the same user, each consume at most one code slot
+  // and create at most one salon — even under double-submit or parallel tabs.
   const codeRef = db.collection("inviteCodes").doc(inviteCode);
-  const codeSnap = await codeRef.get();
-  if (!codeSnap.exists) {
-    return NextResponse.json({ error: "invalid-invite-code" }, { status: 403 });
-  }
-  const codeData = codeSnap.data()!;
-  if (!codeData.active) {
-    return NextResponse.json({ error: "invite-code-inactive" }, { status: 403 });
-  }
-  const uses: number = codeData.uses ?? 0;
-  const maxUses: number = codeData.maxUses ?? 1;
-  if (uses >= maxUses) {
-    return NextResponse.json({ error: "invite-code-exhausted" }, { status: 403 });
-  }
+  try {
+    await db.runTransaction(async (tx) => {
+      const codeSnap = await tx.get(codeRef);
+      if (!codeSnap.exists) throw Object.assign(new Error("invalid-invite-code"),   { httpStatus: 403 });
+      const codeData = codeSnap.data()!;
+      if (!codeData.active)  throw Object.assign(new Error("invite-code-inactive"), { httpStatus: 403 });
+      const uses: number    = codeData.uses    ?? 0;
+      const maxUses: number = codeData.maxUses ?? 1;
+      if (uses >= maxUses)   throw Object.assign(new Error("invite-code-exhausted"), { httpStatus: 403 });
 
-  // ── 4. Check user doesn't already own a salon ─────────────────────────────
-  const existingSnap = await db
-    .collection("salons")
-    .where("ownerUid", "==", uid)
-    .limit(1)
-    .get();
-  if (!existingSnap.empty) {
-    const existingId = existingSnap.docs[0].id;
-    return NextResponse.json({ error: "already-owner", salonId: existingId }, { status: 409 });
+      const existingSnap = await tx.get(
+        db.collection("salons").where("ownerUid", "==", uid).limit(1) as FirebaseFirestore.Query
+      );
+      if (!existingSnap.empty) {
+        const existingId = existingSnap.docs[0].id;
+        throw Object.assign(new Error("already-owner"), { httpStatus: 409, salonId: existingId });
+      }
+
+      // Atomically consume one use of the invite code.
+      tx.update(codeRef, {
+        uses: uses + 1,
+        ...(uses + 1 >= maxUses ? { active: false } : {}),
+        lastUsedBy: uid,
+        lastUsedAt: FieldValue.serverTimestamp(),
+      });
+    });
+  } catch (err: unknown) {
+    const e = err as Error & { httpStatus?: number; salonId?: string };
+    if (e.httpStatus) {
+      const body: Record<string, unknown> = { error: e.message };
+      if (e.salonId) body.salonId = e.salonId;
+      return NextResponse.json(body, { status: e.httpStatus });
+    }
+    throw err;
   }
 
   // ── 5. Generate unique salonId slug ───────────────────────────────────────
@@ -178,13 +192,8 @@ export async function POST(req: NextRequest) {
     batch.set(db.collection("users").doc(uid), { notificationEmail }, { merge: true });
   }
 
-  // consume invite code
-  batch.update(codeRef, {
-    uses: uses + 1,
-    ...(uses + 1 >= maxUses ? { active: false } : {}),
-    lastUsedBy: uid,
-    lastUsedAt: FieldValue.serverTimestamp(),
-  });
+  // Note: invite code consumption was already committed atomically in the transaction
+  // above (steps 3–4). Do NOT update codeRef here.
 
   await batch.commit();
 

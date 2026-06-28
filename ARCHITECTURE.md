@@ -110,7 +110,8 @@ Firestore root
 | `/[salonId]/profile` | Logged-in | Email confirm, set password, delete account |
 | `/[salonId]/reset-password` | All | Firebase password-reset landing |
 | `/[salonId]/notification-check` | Logged-in | Push notification diagnostics |
-| `/[salonId]/download` | All | PWA install guide |
+| `/[salonId]/download` | All | Per-salon PWA install page — shows "התקן" (`beforeinstallprompt`) on Android/Chrome, Safari Add-to-Home-Screen guide on iPhone. Removes Roni APK leftover. |
+| `/[salonId]/manifest.webmanifest` | Public | Dynamic per-salon Web App Manifest: `name`/`short_name`=salon display name, `start_url`/`scope`/`id`=`/{salonId}`. 404 for inactive salons. Cache-Control 60 s / 5 min CDN / SWR 24 h. |
 | `/[salonId]/admin/*` | **Owner only** (isOwner guard in admin/layout.tsx) | |
 | `/[salonId]/admin` | Owner | Dashboard: today's schedule + pending approvals |
 | `/[salonId]/admin/appointments` | Owner | Full appointment list + approve/reject/cancel |
@@ -161,6 +162,7 @@ Firestore root
 | `salon-path.ts` | Client path helpers: `salonCol(salonId, name)`, `salonSubDoc(salonId, col, id)` |
 | `server/salon-path-admin.ts` | Admin SDK helpers: `adminSalonCol(db, salonId, name)` |
 | `server/clinic-read.ts` | **Server-only** `getClinicSettingsServer(salonId)` for server components (home + portfolio); reuses lazy/HMR-safe `getAdminDb()` |
+| `server/salon-read.ts` | **Server-only** `getSalonServer(salonId)` → `{displayName, status}` — reads the root `salons/{salonId}` doc for the manifest route and layout metadata; returns plain fields only (no Timestamps). |
 | `firebase.ts` | Client Firebase init — no `ADMIN_UID` (retired) |
 | `firebase-admin.ts` | **Server-only** Admin SDK: `getAdminAuth`, `getAdminDb`, `getAdminMessaging`, `getAdminStorage` (lazy, HMR-safe) |
 | `admin-auth.ts` | `verifySalonOwner(authHeader, salonId)` + `adminErrorStatus()` |
@@ -181,7 +183,8 @@ Firestore root
 | `notify-client.ts` | Hebrew push messages → `POST /api/notify-client-approval` (`keepalive: true`) |
 | `contact-manager.ts` | `contactManagerForRecovery(ctx, salonId)` — WhatsApp lockout escape hatch |
 | `push.ts` | Native FCM push registration (`@capacitor-firebase/messaging`) |
-| `web-push.ts` | Web FCM for installed PWAs (iOS 16.4+, gesture-first permission) |
+| `web-push.ts` | Web FCM for installed PWAs (iOS 16.4+, gesture-first permission). Also exports `ensureServiceWorkerRegistered()` (permission-independent SW registration, called by /download so `beforeinstallprompt` fires for first-time visitors). |
+| `app-name.ts` | `shortAppName(name, max=12)` — word-boundary truncation for home-screen labels (iOS/Android truncate long app names). Used by manifest route + layout metadata. |
 | `open-external.ts` | `openWhatsApp()` — `whatsapp://` scheme, iOS-safe |
 | `phone.ts` | `buildFullPhone`, `e164ToLocal`, `isValidLocalPhone` (pure, unit-tested) |
 | `platform.ts` | `isIOS()` (shared) |

@@ -306,6 +306,65 @@ approved → completed (endTime passed → cron moves to appointmentsCompleted)
 
 ## Changelog
 
+### 2026-06-28 (session 9 — Salons) — Production-readiness hardening (audit remediation)
+
+**Production-readiness audit** identified two launch-blocking issues and several medium/low risks. This session implements all actionable fixes except the three owner-approved exclusions (S2/U3 phone privacy — intentional; U1 empty-state — acceptable; R7 email deliverability — do not change).
+
+**R1 — Cron was never firing (LAUNCH-BLOCKING fixed):** created **`vercel.json`** with a Vercel Cron job that POSTs `/api/cron/appointment-reminders` every 5 minutes with `Bearer CRON_SECRET`. The route existed but was never triggered — reminders were never sent, approved appointments were never archived.
+
+**R2 — Cron batch could exceed Firestore's 500-op limit (HIGH fixed):** added `SWEEP_LIMIT = 240` (240 docs × 2 ops = 480) with `.limit()` on the sweep query and chunked the batch in `src/app/api/cron/appointment-reminders/route.ts`. Also bounded the reminder window read with `.limit(MAX_PER_RUN)`.
+
+**S4 — Invite-code race condition (MEDIUM fixed):** replaced the read-then-batch-write in `/api/onboard` with an **atomic Firestore transaction** that validates the code, checks owner-uniqueness, and decrements `uses` in one operation. Prevents concurrent requests from over-consuming a code or creating two salons per owner.
+
+**S5 — Owner account deletion orphaned the salon (MEDIUM fixed):** `/api/delete-account` now queries salons where `ownerUid == uid` and batch-updates them to `status: "inactive"` *before* deleting the account, so no orphaned-but-live salons.
+
+**U5 — No booking policy (MEDIUM fixed):**
+- `ClinicSettings` type gains two optional fields: `bookingLeadTimeHours` (min hours ahead a client must book) and `cancellationCutoffHours` (cannot cancel within N hours of the appointment).
+- `/api/availability` reads `clinicSettings/main` in parallel and filters slots by `slot.startTime > now + leadTimeMs`.
+- `/api/appointments` reads `clinicSettings/main` and enforces lead time as defense-in-depth (even if the client bypassed `/api/availability`).
+- `/api/cancel-appointment` reads `clinicSettings/main` and rejects cancellations within the cutoff window (`error: "cancellation-cutoff"`, status 409).
+- Admin/clinic page gains a **"מדיניות הזמנות"** section with two number inputs (lead time + cancellation cutoff), saved via the existing `saveClinicSettings` full-overwrite.
+
+**U6 — `alert()` calls replaced (LOW fixed):**
+- `src/app/[salonId]/book/page.tsx`: added `submitError` state; three `alert()` calls in the `submit()` function replaced with `setSubmitError(...)`. Error displayed in a styled inline banner above the submit button.
+- `src/app/[salonId]/admin/clinic/page.tsx`: added `uploadError` + `galleryError` states; all `alert()` calls in photo upload and gallery handlers replaced with inline state. Error messages displayed as `<p>` elements below the relevant section.
+
+**U4 — Guest recovery UX (MEDIUM fixed):**
+- `BookingConfirmation` now accepts a `salonName?: string` prop — heading reads "נשלח ל{salonName}" and waiting note uses the real name instead of the hardcoded "רני".
+- `book/page.tsx` passes `salon?.displayName ?? salonId` to `BookingConfirmation`.
+- `GuestRecoveryBlock` redesigned: prominent orange warning banner ("שמרו את הקישור עכשיו — לא יוצג שוב!"), "העתק קישור" + conditional "שיתוף" (Web Share API, shown only when `navigator.share` is available) side by side.
+
+**S1 (App Check) — action needed in Firebase Console:**
+App Check code is correct (`firebase.ts` initializes it when `NEXT_PUBLIC_FIREBASE_APPCHECK_KEY` is set). To enforce: provision a reCAPTCHA v3 key in Firebase Console → App Check → Apps → Enforce, then set `NEXT_PUBLIC_FIREBASE_APPCHECK_KEY` in Vercel. No code changes needed.
+
+**S3 (Salon status boundary) — intentional trade-off documented:**
+Rules permit reading public salon subcollections regardless of `status` — enforcing at the rules layer would cost an extra `firestore.get()` per public read on every salon, which is too expensive at scale. The application layer (API routes + SalonProvider redirect) is the enforcement boundary. Suspended salons' *data* is still readable via the client SDK, but bookings are rejected server-side.
+
+**U7 (Admin auth race) — already resolved:**
+`SalonProvider` sets `loading = authLoading || salonLoading` so `isOwner` is never `true` until both auth and salon are loaded. The admin/layout redirect gates on `!loading && !isOwner` — the false-bounce window cannot occur because `loading` stays `true` until auth resolves. No code changes needed.
+
+`npm run build` clean. `npm test` green.
+
+### 2026-06-28 (session 8 — Salons) — Per-salon PWA install + fixed share-card links
+
+**Problem:** the admin "שיתוף הסלון" card showed the wrong links. "קישור להתקנה" pointed to the salon home page (`/{salonId}`) instead of an install page. The existing `/[salonId]/download` page was hardcoded with "רוני ניילס" branding, offered a Roni-Nails APK that belongs to a different project, and the installed PWA was global (`name:"Salons"`, `start_url:"/"`). Every manager's "install link" installed the same generic app that opened the root landing page — not her salon.
+
+**Fix — per-salon PWA identity:**
+
+- **`src/lib/app-name.ts`** (NEW): `shortAppName(name, max=12)` — word-boundary truncation for home-screen labels (iOS/Android cap ~12 chars). Used consistently by manifest + layout metadata.
+- **`src/lib/server/salon-read.ts`** (NEW): `getSalonServer(salonId)` — reads `salons/{salonId}` via the lazy Admin SDK (mirrors `clinic-read.ts`). Returns `{displayName, status}` (no Timestamp fields → safe across RSC boundary).
+- **`src/app/[salonId]/manifest.webmanifest/route.ts`** (NEW): dynamic per-salon Web App Manifest at `/{salonId}/manifest.webmanifest`. Returns `name=displayName`, `short_name=shortAppName(...)`, `start_url`/`scope`/`id=/{salonId}`. Cache-Control: 60 s on-device, 5 min CDN, stale-while-revalidate 24 h — name changes propagate within ~1 min without pinning stale. 404 for missing/inactive salons.
+- **`src/app/[salonId]/layout.tsx`** (EDIT): added `generateMetadata` — overrides `manifest` to `/{salonId}/manifest.webmanifest`, sets `appleWebApp.title=shortAppName(displayName)`, re-declares `apple-mobile-web-app-capable`, `mobile-web-app-capable`, `format-detection` (Next replaces `other` wholesale at the deepest level — must re-include flags or salon pages lose them).
+- **`src/app/[salonId]/download/page.tsx`** (REWRITE): per-salon branding via `useSalon()`. Removed APK download + `NEXT_PUBLIC_ANDROID_APK_URL` entirely. Android/desktop: captures `beforeinstallprompt` → "התקן את האפליקציה" button (text fallback if prompt unavailable); hides if already standalone. iPhone: existing Safari guide unchanged (now names icon after the salon via `apple-mobile-web-app-title`). Eagerly calls `ensureServiceWorkerRegistered()` on mount so Chrome fires the install prompt for first-time visitors who never granted push.
+- **`src/app/firebase-messaging-sw.js/route.ts`** (EDIT): added a no-op `self.addEventListener("fetch", () => {})` — required for Chrome's `beforeinstallprompt` heuristic; does not intercept any network traffic.
+- **`src/lib/web-push.ts`** (EDIT): exported `ensureServiceWorkerRegistered()` — registers the SW without requiring notification permission. Called from the download page.
+- **`public/offline.html`** (EDIT): removed "רוני ניילס" title + hardcoded `roni-nails.vercel.app` retry URL. Retry button now calls `window.location.reload()` to re-attempt the user's actual salon URL.
+- **`src/app/[salonId]/admin/page.tsx`** (EDIT): share card second row changed from "קישור להתקנה" (`{base}`) to "קישור להורדת האפליקציה" (`{base}/download`); label column widened (`w-28` → `w-36`).
+
+**Result:** each manager's install link (`/{salonId}/download`) installs a PWA named after her salon that opens directly into her booking site. iPhone home-screen icon is also named after the salon. The offline fallback is now brand-neutral.
+
+**✅ Verification:** `npm run build` clean — `/[salonId]/manifest.webmanifest` registers as `ƒ Dynamic`; `/` + `/onboard` stay `○ Static`. `npm test` green.
+
 ### 2026-06-28 (session 7 follow-up 2 — Salons) — Portfolio: import images by URL (Google Drive support)
 
 **Problem:** the portfolio "הוספה לפי URL" field stored the pasted link verbatim. A Google Drive

@@ -1,27 +1,30 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useSalon } from "@/contexts/SalonProvider";
+import { isStandalonePWA, ensureServiceWorkerRegistered } from "@/lib/web-push";
 
 /**
- * Public install/download landing page — the ONE permanent link to share with
- * clients (`/download`). It never changes; behind it the Android button points at
- * the permanent GitHub "latest release" APK URL, so it always serves the newest build.
+ * Public install/download landing page — the permanent per-salon link for clients.
+ * Each salon has its own URL (`/{salonId}/download`) so the installed PWA is named
+ * after that salon and opens directly into her booking site.
  *
- *  - Android → big download button (the signed APK from GitHub Releases) + install hint.
- *  - iPhone  → "Add to Home Screen" guide (no APK on iOS; the PWA is the install path).
- *  - Desktop / other → both options, so the page is always usable.
+ *  - Android / desktop Chrome → "התקן את האפליקציה" via beforeinstallprompt, with
+ *    a text fallback if the prompt isn't available.
+ *  - iPhone → Safari "הוסף למסך הבית" guide (iOS has no programmatic install API).
+ *  - Already installed → show a friendly "already installed" note instead.
  *
- * Standalone & login-free: renders browser-only state, stays `○ Static`.
+ * The SW is eagerly registered on mount so Chrome's installability heuristic fires
+ * beforeinstallprompt even for first-time visitors who never granted push permission.
  */
 
-// APK hosted on the site itself (public/roni-nails.apk) so it downloads for everyone
-// without needing the GitHub repo to be public. Override via env if the host changes.
-const APK_URL =
-  process.env.NEXT_PUBLIC_ANDROID_APK_URL ?? "/roni-nails.apk";
+type BeforeInstallPromptEvent = Event & {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+};
 
 function isIOS(): boolean {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent;
-  // iPadOS 13+ reports as Mac; the touch-points check catches it.
   return /iphone|ipad|ipod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
 }
 
@@ -33,11 +36,38 @@ function isAndroid(): boolean {
 type Platform = "android" | "ios" | "other";
 
 export default function DownloadPage() {
+  const { salon } = useSalon();
+  const displayName = salon?.displayName ?? "הסלון";
+
   const [platform, setPlatform] = useState<Platform>("other");
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installed, setInstalled] = useState(false);
 
   useEffect(() => {
     setPlatform(isAndroid() ? "android" : isIOS() ? "ios" : "other");
+    setInstalled(isStandalonePWA());
+
+    // Register the SW early so Chrome fires beforeinstallprompt even for users
+    // who never granted push permission.
+    ensureServiceWorkerRegistered();
+
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e as BeforeInstallPromptEvent);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
+
+  async function handleInstall() {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === "accepted") {
+      setInstallPrompt(null);
+      setInstalled(true);
+    }
+  }
 
   const showAndroid = platform === "android" || platform === "other";
   const showIOS = platform === "ios" || platform === "other";
@@ -52,39 +82,42 @@ export default function DownloadPage() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/icons/icon-192.png"
-          alt="רוני ניילס"
+          alt={displayName}
           width={88}
           height={88}
           className="rounded-3xl shadow-sm"
         />
-        <h1 className="mt-5 text-2xl font-bold">רוני ניילס</h1>
+        <h1 className="mt-5 text-2xl font-bold">{displayName}</h1>
         <p className="mt-1 text-sm" style={{ color: "var(--muted-foreground)" }}>
-          התקינו את האפליקציה כדי לקבוע תורים ולקבל תזכורות
+          {installed
+            ? "האפליקציה כבר מותקנת — פתחי אותה מהאייקון במסך הבית."
+            : "התקינו את האפליקציה כדי לקבוע תורים ולקבל תזכורות"}
         </p>
 
-        {showAndroid && (
+        {!installed && showAndroid && (
           <div
             className="mt-8 w-full p-5 text-right"
             style={{ background: "var(--rose-soft)", borderRadius: "var(--radius)" }}
           >
-            <p className="font-bold text-sm mb-3">אנדרואיד</p>
-            <a
-              href={APK_URL}
-              download
-              className="block w-full text-center text-base px-5 py-3 rounded-full font-bold text-white active:scale-95 transition-transform"
-              style={{ background: "var(--primary)" }}
-            >
-              הורידו את האפליקציה
-            </a>
-            <p className="mt-3 text-xs leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
-              לאחר ההורדה, פתחו את הקובץ שירד והתקינו. אם אנדרואיד מבקש אישור —
-              אשרו <strong>"התקנה ממקור לא ידוע"</strong> (זה תקין ובטוח). הקישור הזה תמיד
-              מוביל לגרסה העדכנית ביותר.
-            </p>
+            <p className="font-bold text-sm mb-3">אנדרואיד / מחשב</p>
+            {installPrompt ? (
+              <button
+                onClick={handleInstall}
+                className="block w-full text-center text-base px-5 py-3 rounded-full font-bold text-white active:scale-95 transition-transform"
+                style={{ background: "var(--primary)" }}
+              >
+                התקן את האפליקציה
+              </button>
+            ) : (
+              <p className="text-xs leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
+                פתחו את תפריט הדפדפן (⋮) ובחרו <strong>"התקן אפליקציה"</strong>{" "}
+                או <strong>"הוסף למסך הבית"</strong>.
+              </p>
+            )}
           </div>
         )}
 
-        {showIOS && (
+        {!installed && showIOS && (
           <div
             className="mt-5 w-full p-5 text-right"
             style={{ background: "var(--rose-soft)", borderRadius: "var(--radius)" }}
@@ -98,9 +131,11 @@ export default function DownloadPage() {
           </div>
         )}
 
-        <p className="mt-8 text-xs" style={{ color: "var(--muted-foreground)" }}>
-          כבר מותקן אצלכם? האפליקציה מתעדכנת אוטומטית — אין צורך להוריד מחדש.
-        </p>
+        {!installed && (
+          <p className="mt-8 text-xs" style={{ color: "var(--muted-foreground)" }}>
+            כבר מותקן אצלכם? האפליקציה מתעדכנת אוטומטית — אין צורך להתקין מחדש.
+          </p>
+        )}
       </div>
     </div>
   );

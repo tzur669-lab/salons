@@ -194,7 +194,8 @@ export default function AdminDashboard() {
   }
 
   const base = salon?.bookingUrl ?? `${process.env.NEXT_PUBLIC_APP_URL ?? "https://salonss.vercel.app"}/${salonId}`;
-  const bookingLink = `${base}/book`;
+  const bookingLink  = `${base}/book`;
+  const downloadLink = `${base}/download`;
 
   if (loading) {
     return (
@@ -255,11 +256,11 @@ export default function AdminDashboard() {
       <section className="mb-6 p-4 rounded-2xl" style={{ background: "var(--rose-soft)" }}>
         <h2 className="font-semibold mb-3 text-right" style={{ color: "var(--rose)" }}>שיתוף הסלון</h2>
         {[
-          { label: "כתובת ההזמנה", url: bookingLink },
-          { label: "קישור להתקנה",  url: base },
+          { label: "כתובת ההזמנה",          url: bookingLink  },
+          { label: "קישור להורדת האפליקציה", url: downloadLink },
         ].map(({ label, url }) => (
           <div key={label} className="flex items-center gap-2 mb-2 last:mb-0">
-            <span className="text-sm shrink-0 w-28 text-right" style={{ color: "var(--muted-foreground)" }}>{label}</span>
+            <span className="text-sm shrink-0 w-36 text-right" style={{ color: "var(--muted-foreground)" }}>{label}</span>
             <span
               className="flex-1 text-xs rounded-lg px-2 py-1.5 truncate select-all"
               dir="ltr"

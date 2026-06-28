@@ -89,9 +89,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (startDate.getTime() <= Date.now()) {
-    return NextResponse.json({ ok: false, error: "slot-in-past" }, { status: 409 });
-  }
   if (endDate.getTime() <= startDate.getTime()) {
     return NextResponse.json({ ok: false, error: "invalid-times" }, { status: 400 });
   }
@@ -103,13 +100,21 @@ export async function POST(req: NextRequest) {
 
     const salonRef = adminDb.collection("salons").doc(salonId);
 
-    const [rulesSnap, blockedSnap, serviceSnap, pendSnap, apprSnap] = await Promise.all([
+    const [rulesSnap, blockedSnap, clinicSnap, serviceSnap, pendSnap, apprSnap] = await Promise.all([
       salonRef.collection("availabilityRules").get(),
       salonRef.collection("blockedTimes").get(),
+      salonRef.collection("clinicSettings").doc("main").get(),
       salonRef.collection("services").doc(serviceId).get(),
       salonRef.collection("appointmentsPending").where("startTime", ">=", dayStart).where("startTime", "<", dayEnd).get(),
       salonRef.collection("appointmentsApproved").where("startTime", ">=", dayStart).where("startTime", "<", dayEnd).get(),
     ]);
+
+    // Defense-in-depth: enforce lead time even if the client bypassed /api/availability.
+    const clinicData  = clinicSnap.data() ?? {};
+    const leadTimeMs  = ((clinicData.bookingLeadTimeHours as number | undefined) ?? 0) * 3_600_000;
+    if (startDate.getTime() <= Date.now() + leadTimeMs) {
+      return NextResponse.json({ ok: false, error: "slot-in-past" }, { status: 409 });
+    }
 
     const rules   = rulesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as AvailabilityRule);
     const blocked = blockedSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as BlockedTime);

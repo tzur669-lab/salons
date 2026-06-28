@@ -51,6 +51,27 @@ export async function DELETE(req: NextRequest) {
     const adminAuth = getAdminAuth();
     const adminDb = getAdminDb();
 
+    // 0. If this user owns any salons, suspend them so they stop accepting bookings.
+    //    Without this, the salon becomes permanently orphaned: ownerUid points to a
+    //    deleted account, the salon stays publicly bookable, and no one can manage it.
+    const ownedSalonsSnap = await adminDb
+      .collection("salons")
+      .where("ownerUid", "==", uid)
+      .get();
+    if (!ownedSalonsSnap.empty) {
+      let suspendBatch = adminDb.batch();
+      let suspendOps   = 0;
+      for (const salonDoc of ownedSalonsSnap.docs) {
+        suspendBatch.update(salonDoc.ref, { status: "inactive" });
+        if (++suspendOps >= 400) {
+          await suspendBatch.commit();
+          suspendBatch = adminDb.batch();
+          suspendOps   = 0;
+        }
+      }
+      if (suspendOps > 0) await suspendBatch.commit();
+    }
+
     // 1. Push tokens (doc + tokens/ subcollection).
     await adminDb.recursiveDelete(adminDb.collection("pushTokens").doc(uid)).catch(() => {});
 

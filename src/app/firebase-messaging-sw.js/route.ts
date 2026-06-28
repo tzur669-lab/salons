@@ -31,6 +31,11 @@ firebase.initializeApp(${JSON.stringify(config)});
 const messaging = firebase.messaging();
 
 // Deep-link to the page in the message's fcmOptions.link / data.route on click.
+// No-op fetch listener: required for Chrome's PWA installability heuristic.
+// Without a fetch handler, beforeinstallprompt never fires. This listener
+// intentionally does NOT intercept the network — all requests pass through normally.
+self.addEventListener("fetch", () => {});
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url =
