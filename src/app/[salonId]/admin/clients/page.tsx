@@ -4,6 +4,7 @@ import { useSalon } from "@/contexts/SalonProvider";
 import { getSalonClients, addClientNote, getClientNotes } from "@/lib/firestore/users";
 import { getClientAppointments } from "@/lib/firestore/appointments";
 import { useAuth } from "@/hooks/useAuth";
+import { Timestamp } from "firebase/firestore";
 import type { AppUser, Appointment, ClientNote } from "@/types";
 
 export default function AdminClientsPage() {
@@ -32,7 +33,7 @@ export default function AdminClientsPage() {
     if (!note.trim() || !selected || !user) return;
     setSaving(true);
     const newNote = await addClientNote(salonId, selected.id, note.trim(), user.uid);
-    setNotes((prev) => [{ ...newNote, createdAt: { toDate: () => new Date() } as any }, ...prev]);
+    setNotes((prev) => [{ ...newNote, createdAt: Timestamp.now() }, ...prev]);
     setNote("");
     setSaving(false);
   }

@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 export default function RootLanding() {
   return (
@@ -16,7 +17,7 @@ export default function RootLanding() {
       <p className="text-center" style={{ color: "var(--muted-foreground)", maxWidth: 320, lineHeight: 1.6 }}>
         הכניסי את הלינק שקיבלת מהמאניקוריסטית שלך,
         <br />
-        או <a href="/onboard" style={{ color: "var(--rose)", textDecoration: "underline" }}>הצטרפי כמאניקוריסטית</a>.
+        או <Link href="/onboard" style={{ color: "var(--rose)", textDecoration: "underline" }}>הצטרפי כמאניקוריסטית</Link>.
       </p>
     </div>
   );

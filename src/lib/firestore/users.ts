@@ -7,6 +7,7 @@ import {
   query,
   where,
   serverTimestamp,
+  Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { salonCol } from "@/lib/salon-path";
@@ -66,7 +67,7 @@ export async function addClientNote(
     createdAt: serverTimestamp(),
     updatedBy: adminId,
   });
-  return { id: ref.id, clientId, note, createdAt: null as any, updatedBy: adminId };
+  return { id: ref.id, clientId, note, createdAt: Timestamp.now(), updatedBy: adminId };
 }
 
 export async function getClientNotes(salonId: string, clientId: string): Promise<ClientNote[]> {

@@ -110,8 +110,8 @@ export default function DownloadPage() {
               </button>
             ) : (
               <p className="text-xs leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
-                פתחו את תפריט הדפדפן (⋮) ובחרו <strong>"התקן אפליקציה"</strong>{" "}
-                או <strong>"הוסף למסך הבית"</strong>.
+                פתחו את תפריט הדפדפן (⋮) ובחרו <strong>&quot;התקן אפליקציה&quot;</strong>{" "}
+                או <strong>&quot;הוסף למסך הבית&quot;</strong>.
               </p>
             )}
           </div>
@@ -125,7 +125,7 @@ export default function DownloadPage() {
             <p className="font-bold text-sm mb-2">אייפון</p>
             <p className="text-xs leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
               פתחו את הדף הזה ב‑<strong>Safari</strong>, לחצו על כפתור השיתוף ⬆️ בסרגל,
-              בחרו <strong>"הוסף למסך הבית"</strong>, ואז פתחו את האפליקציה מהאייקון החדש.
+              בחרו <strong>&quot;הוסף למסך הבית&quot;</strong>, ואז פתחו את האפליקציה מהאייקון החדש.
               האפליקציה תתעדכן לבד בכל פתיחה.
             </p>
           </div>
