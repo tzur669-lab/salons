@@ -99,19 +99,35 @@ export default function DownloadPage() {
             className="mt-8 w-full p-5 text-right"
             style={{ background: "var(--rose-soft)", borderRadius: "var(--radius)" }}
           >
-            <p className="font-bold text-sm mb-3">אנדרואיד / מחשב</p>
-            <button
-              onClick={installPrompt ? handleInstall : undefined}
-              className="block w-full text-center text-base px-5 py-3 rounded-full font-bold text-white active:scale-95 transition-transform"
-              style={{ background: "var(--primary)" }}
-            >
-              הוסיפו למסך הבית
-            </button>
-            {!installPrompt && (
-              <p className="mt-3 text-xs leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
-                פתחו את תפריט הדפדפן (⋮) ובחרו <strong>&quot;התקן אפליקציה&quot;</strong>{" "}
-                או <strong>&quot;הוסף למסך הבית&quot;</strong>.
-              </p>
+            <p className="font-bold text-sm mb-4">אנדרואיד / מחשב</p>
+            {installPrompt ? (
+              <button
+                onClick={handleInstall}
+                className="block w-full text-center text-base px-5 py-3 rounded-full font-bold text-white active:scale-95 transition-transform"
+                style={{ background: "var(--primary)" }}
+              >
+                התקינו את האפליקציה
+              </button>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {[
+                  { n: "1", text: <>לחצו על <strong>⋮</strong> בפינה העליונה של הדפדפן</> },
+                  { n: "2", text: <>בחרו <strong>&quot;התקן אפליקציה&quot;</strong> או <strong>&quot;הוסף למסך הבית&quot;</strong></> },
+                  { n: "3", text: <>לחצו <strong>התקן</strong> ופתחו מהאייקון החדש</> },
+                ].map(({ n, text }) => (
+                  <div key={n} className="flex items-start gap-3">
+                    <span
+                      className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold text-white mt-0.5"
+                      style={{ background: "var(--primary)" }}
+                    >
+                      {n}
+                    </span>
+                    <p className="text-sm leading-relaxed pt-0.5" style={{ color: "var(--foreground)" }}>
+                      {text}
+                    </p>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}
