@@ -306,6 +306,16 @@ approved → completed (endTime passed → cron moves to appointmentsCompleted)
 
 ## Changelog
 
+### 2026-06-28 (session 10 — Salons) — Vercel deploy fix + cron schedule fix
+
+**GitHub → Vercel webhook broken:** Multiple GitHub pushes were not triggering auto-deploy. Fixed by going to Vercel Project Settings → Git → Disconnect → Reconnect GitHub integration.
+
+**CLI deploy workaround:** Used `vercel --prod --token` directly to push the accumulated session 8+9 changes that were stuck undeployed.
+
+**Cron schedule fix (`vercel.json`):** The reminder cron was set to `*/5 * * * *` (every 5 min), which requires Vercel Pro. Changed to `0 6 * * *` (09:00 Israel time daily) to work within Hobby plan limits. Deduplication via `reminderSentAt` is unchanged — a once-daily sweep is sufficient since reminder eligibility is time-window based.
+
+**Note:** Vercel CLI token (`vcp_6k2f2t4b...`) was used for this session's deploy. Token should be rotated at vercel.com → Settings → Tokens after confirming auto-deploy works again.
+
 ### 2026-06-28 (session 9 — Salons) — Production-readiness hardening (audit remediation)
 
 **Production-readiness audit** identified two launch-blocking issues and several medium/low risks. This session implements all actionable fixes except the three owner-approved exclusions (S2/U3 phone privacy — intentional; U1 empty-state — acceptable; R7 email deliverability — do not change).
