@@ -45,6 +45,9 @@ ui-debug.log
 *.jks
 keystore_b64.txt
 
+# Firebase service account keys — never commit
+*-firebase-adminsdk-*.json
+
 # IDE
 .idea/
 android/.idea/
