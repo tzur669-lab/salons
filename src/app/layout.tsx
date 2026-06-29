@@ -42,6 +42,31 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * Inline script that runs at HTML-parse time, before React hydrates.
+ * Captures `beforeinstallprompt` (Chrome Android) so the download page
+ * can read it synchronously — avoiding the hydration-race where the event
+ * fires before useEffect listeners are registered.
+ * Also registers the service worker early on every page so Chrome's
+ * installability heuristic is satisfied before the user reaches /download.
+ */
+const earlyCapture = `
+(function(){
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('/firebase-messaging-sw.js').catch(function(){});
+  }
+  function capture(e){
+    e.preventDefault();
+    window.__deferredInstallPrompt = e;
+    window.dispatchEvent(new Event('installprompt-ready'));
+  }
+  window.addEventListener('beforeinstallprompt', capture);
+  window.addEventListener('appinstalled', function(){
+    window.__deferredInstallPrompt = null;
+  });
+})();
+`;
+
 export default function RootLayout({
   children,
 }: {
@@ -50,6 +75,8 @@ export default function RootLayout({
   return (
     <html lang="he" dir="rtl" className={heebo.variable}>
       <body className="min-h-screen antialiased">
+        {/* eslint-disable-next-line react/no-danger */}
+        <script dangerouslySetInnerHTML={{ __html: earlyCapture }} />
         <NativeSetup />
         <PushPermissionPrompt />
         <WebPushPermissionPrompt />

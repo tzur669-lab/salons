@@ -306,6 +306,35 @@ approved → completed (endTime passed → cron moves to appointmentsCompleted)
 
 ## Changelog
 
+### 2026-06-29 (session 11 — Salons) — Reliable per-salon PWA install (Android timing fix + in-app browser detection)
+
+**Problem:** `/{salonId}/download` showed only text instructions on Android — no install button. Root cause was a hydration-race: `beforeinstallprompt` fires early (at page-load time), but the React `useEffect` listener is attached only after hydration, so the event was always lost. Compounding it: the service worker was only registered on the `/download` page itself, so on a first visit Chrome hadn't satisfied its installability heuristic yet.
+
+**Fix — early-capture inline script (`src/app/layout.tsx`):** A plain `<script dangerouslySetInnerHTML>` runs at HTML-parse time, before any JS bundle loads. It:
+- registers `/firebase-messaging-sw.js` on every page (SW active early, installability satisfied before the user reaches `/download`);
+- intercepts `beforeinstallprompt` → `preventDefault()` → stashes on `window.__deferredInstallPrompt` → dispatches `installprompt-ready` custom event;
+- clears the stash on `appinstalled`.
+
+**Fix — download page rewrite (`src/app/[salonId]/download/page.tsx`):**
+- Reads `window.__deferredInstallPrompt` synchronously on mount (no race).
+- Single primary button **"התקינו את האפליקציה"** always visible (like Roni's button):
+  - Prompt available → one tap → native install dialog. Resets the one-shot event after `userChoice` (regardless of outcome — a consumed event throws on a second `prompt()` call). On "dismissed" → falls back to the numbered step guide.
+  - Prompt not available → tap reveals the numbered steps.
+  - **In-app browser** (Instagram / WhatsApp / Facebook / Messenger / TikTok) → "פתחו ב‑Chrome/Safari" banner + "העתק קישור" button (PWA install is impossible inside social-media webviews).
+  - iPhone → Safari "הוסף למסך הבית" guide (unchanged, same as Roni).
+  - Already installed → friendly "already installed" note.
+- Dropped the duplicated `isIOS`/`isAndroid` local copies; now uses shared `src/lib/platform.ts`.
+
+**New: `src/types/global.d.ts`:** Global TS declarations for `BeforeInstallPromptEvent` and `Window.__deferredInstallPrompt` — required for `npm run build` type-check to pass.
+
+**Extended `src/lib/platform.ts`:** Added `isAndroid()` and `isInAppBrowser()` (UA regex: `FBAN|FBAV|Instagram|Line|WhatsApp|Messenger|Twitter|Snapchat|TikTok|wv`).
+
+**Minor: `src/lib/web-push.ts`:** Foreground notification fallback title changed from hardcoded `"רוני ניילס"` → `"הסלון"`.
+
+**Cleanup: deleted `public/roni-nails.apk`** — 4.8 MB leftover from the Roni Nails fork. Was publicly reachable at `salonss.vercel.app/roni-nails.apk` and installed Roni's app (pointing at `roni-nails.vercel.app`) for any salon — wrong for everyone.
+
+`npm run build` clean. `npm test` green.
+
 ### 2026-06-28 (session 10 — Salons) — Vercel deploy fix + cron fix + download page button
 
 **Download page (`/[salonId]/download`):** `beforeinstallprompt` doesn't always fire (Chrome has engagement heuristics), so the Android section was showing only text instructions with no button. Fixed: the "הוסיפו למסך הבית" button is now always rendered. If `beforeinstallprompt` is available, clicking it triggers the native PWA install dialog. If not, the text instructions appear below the button as a manual guide. Matches the visual style of the Roni Nails download page.

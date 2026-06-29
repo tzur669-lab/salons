@@ -93,7 +93,7 @@ function bindForeground(messaging: Messaging) {
   _foregroundBound = true;
   // Foreground messages aren't auto-displayed by the SW — show them manually.
   onMessage(messaging, (payload) => {
-    const title = payload.notification?.title ?? "רוני ניילס";
+    const title = payload.notification?.title ?? "הסלון";
     const body = payload.notification?.body ?? "";
     const route = (payload.data?.route as string | undefined) ?? "/my-appointments";
     _registration
