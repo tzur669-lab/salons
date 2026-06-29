@@ -306,6 +306,68 @@ approved → completed (endTime passed → cron moves to appointmentsCompleted)
 
 ## Changelog
 
+### 2026-06-29 (session 12 — Salons) — One-tap APK install + salon code gate
+
+**Core problem:** Chrome 149 removed the `bypass-app-banner-engagement-checks` flag and enforces an engagement heuristic before firing `beforeinstallprompt`. Even with all PWA criteria met, the install button couldn't trigger a native dialog on a first visit, and "Add to home screen" from the Chrome menu created a bookmark shortcut rather than a proper PWA install. This is a browser-level limit that cannot be bypassed from web code.
+
+**Solution: single APK + 4-digit salon code.** Instead of per-salon PWAs (one per salon, blocked by Chrome engagement), we build **one APK** for all salons. The APK loads `salonss.vercel.app` via Capacitor's remote-URL mode (same web codebase). On first launch, the user enters a 4-digit code; the code resolves to a `salonId` and the device is permanently bound. No Chrome engagement required — APK installs in one tap, like Roni Nails.
+
+**New: `salonCode` field (4 digits) on every salon**
+- `src/types/index.ts` — `salonCode?: string` added to `Salon` interface.
+- `src/app/api/onboard/route.ts` — `resolveUniqueCode()` helper generates a collision-safe 4-digit code (10 retries, `get()`-based uniqueness check; `CODE_LENGTH`/`CODE_ALPHABET` constants for easy future upgrade to alphanumeric). Writes `salonCodes/{code} → { salonId }` (reverse-index) and includes `salonCode` in the salon doc — all in the existing `batch.commit()`.
+- `src/app/api/resolve-code/route.ts` (NEW) — `GET /api/resolve-code?code=1234` reads `salonCodes/{code}` (Admin SDK, server-only) and returns `{ salonId }` or 404. No Firestore rules change needed.
+- `scripts/backfill-salon-codes.mjs` (NEW) — run once: `node scripts/backfill-salon-codes.mjs`. Assigns codes to all existing salons missing one. **Run this after deploying.**
+
+**New: `src/lib/salon-binding.ts`** — abstraction for persisting the bound `salonId`. On native (APK): `@capacitor/preferences` (SharedPreferences / NSUserDefaults — survives OS low-memory evictions) as primary, mirrored to `localStorage`. On web/PWA: `localStorage` only. Exports `getBoundSalon()`, `setBoundSalon()`, `clearBoundSalon()` (async) and `getBoundSalonSync()` (synchronous mirror read).
+
+**Rewritten root landing `src/app/page.tsx`** — salon code gate:
+- On mount: `getBoundSalon()` → if bound, redirect to `/{salonId}` immediately.
+- If not bound: 4-digit PIN entry (individual digit boxes, auto-advance, backspace-aware), → `GET /api/resolve-code` → bind + redirect. Wrong code shows error.
+- Entry point for salon owners (`/onboard` link) preserved.
+- Direct links (`/{salonId}`) bypass the gate entirely — no middleware, scoping is local to this page.
+
+**Updated `src/app/[salonId]/download/page.tsx`**:
+- Android section: prominent **"הורדת האפליקציה"** `<a download href="/salons-app.apk">` button (APK direct download, one tap).
+- Microcopy under button: "הדפדפן עשוי לבקש אישור להתקנה מ'מקורות לא ידועים' — זהו תהליך רגיל ובטוח לחלוטין" (handles Unknown Sources anxiety).
+- Salon code card below: "בפתיחה הראשונה הקלידי את הקוד: **XXXX**" — reads `salon.salonCode` from `useSalon()`.
+- iOS guide and in-app-browser banner unchanged.
+
+**Updated `src/app/[salonId]/admin/page.tsx`** — "שיתוף הסלון" card now shows the salon code prominently (with copy button) above the existing booking/download links. Owners share the code with clients.
+
+**Updated `src/app/[salonId]/login/page.tsx`** (native v1 auth):
+- Google sign-in button hidden when `Capacitor.isNativePlatform()` (Firebase for Salons project not yet wired for native Google OAuth — Part C).
+- Safety net for Google-only accounts: before email sign-in on native, calls `fetchSignInMethodsForEmail()`. If the email is Google-only, shows "המייל רשום דרך Google — לחצי על 'שכחתי סיסמה' כדי להגדיר סיסמה" and redirects to the existing `ForgotPassword` flow. ⚠️ **REQUIRES:** Firebase Console → Authentication → Settings → **Email Enumeration Protection → OFF**. Without this, `fetchSignInMethodsForEmail` always returns `[]`.
+
+**Capacitor config + Android branding:**
+- `capacitor.config.ts`: `server.url` → `https://salonss.vercel.app` (was `roni-nails.vercel.app` — fork leftover); `appName` → `'Salons'`; splash/status-bar/background colors → `#FDFAF7` (neutral Salons palette).
+- `android/app/src/main/res/values/strings.xml`: `app_name` + `title_activity_main` → `"Salons"`.
+
+**APK build:**
+- `npx cap sync android` → `cd android && ./gradlew assembleRelease` (requires `JAVA_HOME` pointing to Android Studio JBR / JDK 21 — system JDK 17 is insufficient for Capacitor 8 / AGP 8.13).
+- Output copied to `public/salons-app.apk` (4.7 MB, served at `salonss.vercel.app/salons-app.apk`).
+- Signed with `android/app/release.keystore` (credentials in `android/keystore.properties`).
+
+**Build command for next APK update:**
+```
+cd android && JAVA_HOME="C:/Program Files/Android/Android Studio/jbr" KEYSTORE_PATH=release.keystore KEYSTORE_STORE_PASSWORD=<see keystore.properties> KEYSTORE_KEY_ALIAS=roninails KEYSTORE_KEY_PASSWORD=<see keystore.properties> ./gradlew assembleRelease
+```
+Credentials are in `android/keystore.properties` (gitignored). Then copy `android/app/build/outputs/apk/release/app-release.apk` → `public/salons-app.apk`.
+
+**Part C (deferred — native Google Auth + FCM):**
+Firebase project `salons-19a2e` not yet registered as an Android app. To enable:
+1. Firebase Console → `salons-19a2e` → Add app → Android → register SHA-1/SHA-256 from `release.keystore`.
+2. Download new `google-services.json` → `android/app/`.
+3. Update `capacitor.config.ts` GoogleAuth clientIds to the `salons-19a2e` OAuth clients.
+4. Update `applicationId` / Java package if changing from `com.roninails.app` (requires `MainActivity.java`, `BatteryOptimizationPlugin.java` rename).
+5. Remove `!isNativePlatform()` guard from Google button in `login/page.tsx`.
+
+**Backfill step — run after first deploy:**
+```
+GOOGLE_APPLICATION_CREDENTIALS=<service-account.json> node scripts/backfill-salon-codes.mjs
+```
+
+`npm run build` clean. `cap sync` and Gradle release build successful.
+
 ### 2026-06-29 (session 11 — Salons) — Reliable per-salon PWA install (Android timing fix + in-app browser detection)
 
 **Problem:** `/{salonId}/download` showed only text instructions on Android — no install button. Root cause was a hydration-race: `beforeinstallprompt` fires early (at page-load time), but the React `useEffect` listener is attached only after hydration, so the event was always lost. Compounding it: the service worker was only registered on the `/download` page itself, so on a first visit Chrome hadn't satisfied its installability heuristic yet.

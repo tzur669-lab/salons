@@ -1,15 +1,15 @@
 import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.roninails.app',
-  appName: 'Roni Nail',
+  appId: 'com.roninails.app',  // kept from fork for v1 — update in Part C when Firebase is re-wired for the Salons project
+  appName: 'Salons',
   // Must point to an existing directory. public/ already exists in the Next.js project.
   // In remote URL mode Capacitor serves from server.url, not from webDir — but it
   // checks webDir exists at sync time and reads errorPath from it.
   webDir: 'public',
 
   server: {
-    url: 'https://roni-nails.vercel.app',
+    url: 'https://salonss.vercel.app',
     cleartext: false,
     androidScheme: 'https',
 
@@ -32,13 +32,13 @@ const config: CapacitorConfig = {
     // Safe-off by default so a release build can't accidentally ship a remotely
     // debuggable WebView. Opt in for local debugging with CAP_DEBUG=true before `cap sync`.
     webContentsDebuggingEnabled: process.env.CAP_DEBUG === "true",
-    backgroundColor: '#FCF1F3',
+    backgroundColor: '#FDFAF7',
   },
 
   ios: {
     scheme: 'app',
     limitsNavigationsToAppBoundDomains: true,
-    backgroundColor: '#FCF1F3',
+    backgroundColor: '#FDFAF7',
     scrollEnabled: true,
     contentInset: 'automatic',
   },
@@ -47,7 +47,7 @@ const config: CapacitorConfig = {
     SplashScreen: {
       launchShowDuration: 2000,
       launchAutoHide: true,
-      backgroundColor: '#FCF1F3',
+      backgroundColor: '#FDFAF7',
       androidSplashResourceName: 'splash',
       androidScaleType: 'CENTER_CROP',
       showSpinner: false,
@@ -57,7 +57,7 @@ const config: CapacitorConfig = {
     },
     StatusBar: {
       style: 'DARK',
-      backgroundColor: '#FCF1F3',
+      backgroundColor: '#FDFAF7',
       overlaysWebView: true,
     },
     GoogleAuth: {

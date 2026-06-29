@@ -34,6 +34,23 @@ function slugify(text: string): string {
     .slice(0, 30);
 }
 
+// Expand CODE_ALPHABET to base-32 (e.g. "23456789ABCDEFGHJKLMNPQRSTUVWXYZ") in a future version if needed.
+const CODE_LENGTH = 4;
+const CODE_ALPHABET = "0123456789";
+
+/** Finds an available 4-digit salon code. Retries up to 10 times on collision (1-in-10000 chance per try). */
+async function resolveUniqueCode(db: FirebaseFirestore.Firestore): Promise<string> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    let code = "";
+    for (let i = 0; i < CODE_LENGTH; i++) {
+      code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+    }
+    const snap = await db.collection("salonCodes").doc(code).get();
+    if (!snap.exists) return code;
+  }
+  throw new Error("code-collision");
+}
+
 /** Find an available slug. Appends -2, -3, … if taken. */
 async function resolveUniqueSlug(db: FirebaseFirestore.Firestore, base: string): Promise<string> {
   const snap = await db.collection("salons").doc(base).get();
@@ -123,6 +140,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "slug-collision" }, { status: 500 });
   }
 
+  let salonCode: string;
+  try {
+    salonCode = await resolveUniqueCode(db);
+  } catch {
+    return NextResponse.json({ error: "code-collision" }, { status: 500 });
+  }
+
   // ── 6. Build opening hours & availability rules ───────────────────────────
   const openDaysSet = new Set(openDays);
   const openingHours = Object.fromEntries(
@@ -152,6 +176,13 @@ export async function POST(req: NextRequest) {
     ownerUid: uid,
     status: "active",
     bookingUrl,
+    salonCode,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
+  // salonCodes/{code} — reverse-index for native app first-launch binding
+  batch.set(db.collection("salonCodes").doc(salonCode), {
+    salonId,
     createdAt: FieldValue.serverTimestamp(),
   });
 
@@ -197,5 +228,5 @@ export async function POST(req: NextRequest) {
 
   await batch.commit();
 
-  return NextResponse.json({ salonId });
+  return NextResponse.json({ salonId, salonCode });
 }

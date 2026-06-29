@@ -255,6 +255,31 @@ export default function AdminDashboard() {
       {/* Salon share card */}
       <section className="mb-6 p-4 rounded-2xl" style={{ background: "var(--rose-soft)" }}>
         <h2 className="font-semibold mb-3 text-right" style={{ color: "var(--rose)" }}>שיתוף הסלון</h2>
+
+        {/* Salon code — for native app first-launch binding */}
+        {salon?.salonCode && (
+          <div className="flex items-center gap-3 mb-4 p-3 rounded-xl" style={{ background: "var(--surface)" }}>
+            <div className="flex-1 text-right">
+              <p className="text-xs font-semibold mb-0.5" style={{ color: "var(--rose)" }}>קוד הסלון לאפליקציה</p>
+              <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>שתפי עם הלקוחות — יקלידו בפתיחה הראשונה</p>
+            </div>
+            <span
+              className="text-3xl font-extrabold tracking-widest shrink-0"
+              style={{ color: "var(--foreground)", fontVariantNumeric: "tabular-nums" }}
+              dir="ltr"
+            >
+              {salon.salonCode}
+            </span>
+            <button
+              onClick={() => copyLink(salon.salonCode!, "קוד הסלון")}
+              className="text-xs px-2 py-1.5 rounded-lg shrink-0 border font-bold active:scale-95"
+              style={{ borderColor: "var(--rose)", color: "var(--rose)", background: "var(--surface)" }}
+            >
+              {copiedKey === "קוד הסלון" ? "הועתק ✓" : "העתק"}
+            </button>
+          </div>
+        )}
+
         {[
           { label: "כתובת ההזמנה",          url: bookingLink  },
           { label: "קישור להורדת האפליקציה", url: downloadLink },
